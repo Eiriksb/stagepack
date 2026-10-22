@@ -1,6 +1,7 @@
 package deck
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -48,10 +49,6 @@ func TestCodeReasons(t *testing.T) {
 		{"bundled package listing addons", []string{"vendor/node_modules/a/package.json", "vendor/node_modules/a/index.css"}, plain,
 			[]string{"package a (bundled with the talk)"},
 			map[string]string{"vendor/node_modules/a/package.json": `{"slidev": {"addons": ["b"]}}`}},
-		{"a theme that is not bundled", []string{"slides.md"}, "---\ntheme: seriph\n---\n",
-			[]string{"a theme set in slides.md (any theme but the bundled \"default\" can run code)"}, nil},
-		{"addons by name", []string{"slides.md"}, "---\naddons:\n  - slidev-addon-qrcode\n---\n",
-			[]string{"addons set in slides.md (addons can run code)"}, nil},
 		{"broken package.json", []string{"slides.md", "package.json"}, plain, []string{"package.json (it can't be read, so its addons can't be checked)"}, map[string]string{"package.json": `{`}},
 	}
 	for _, c := range cases {
@@ -65,7 +62,7 @@ func TestCodeReasons(t *testing.T) {
 				}
 				return nil
 			}
-			got := CodeReasons(c.names, "slides.md", read)
+			got := CodeReasons(c.names, read)
 			if strings.Join(got, "\n") != strings.Join(c.want, "\n") {
 				t.Errorf("CodeReasons = %q, want %q", got, c.want)
 			}
@@ -116,21 +113,53 @@ func TestCodeReasonsFailClosedOnYAML(t *testing.T) {
 		"default as a later key":                  "---\ntheme: default\ntheme: ./x\n---\n",
 		"prose":                                   "---\ntitle: x\n---\n\nThe theme: dark.\n",
 		"empty theme":                             "---\ntheme:\n---\n",
+		"comment without a blank":                 "---\ntheme: default#/../../evil\n---\n",
+		"alias as the key":                        "---\nx: &k theme\n*k : ./x\n---\n",
+		"merge key":                               "---\n<<: *base\ntheme: default\n---\n",
+		"line separator after the plain form":     "---\ntheme: default\u2028theme: ./x\n---\n",
 	} {
-		read := func(string) []byte { return []byte(slides) }
-		if got := CodeReasons([]string{"slides.md"}, "slides.md", read); len(got) == 0 {
+		if got := SlidesReasons("slides.md", slides, true); len(got) == 0 {
 			t.Errorf("%s: not counted as code:\n%q", name, slides)
 		}
 	}
-	// Other Markdown files are looked at too; the allowed form counts only in the slides file.
-	read := func(n string) []byte {
-		if n == "pages/more.md" {
-			return []byte("---\ntheme: default\n---\n")
-		}
-		return []byte("# hi\n")
-	}
-	if got := CodeReasons([]string{"slides.md", "pages/more.md"}, "slides.md", read); len(got) != 1 {
+	// The allowed form counts only in the slides file.
+	if got := SlidesReasons("pages/more.md", "---\ntheme: default\n---\n", false); len(got) != 1 {
 		t.Errorf("theme in pages/more.md: %q", got)
+	}
+}
+
+func TestSlidesReasonsNames(t *testing.T) {
+	if got := SlidesReasons("slides.md", "---\ntheme: seriph\n---\n", true); len(got) != 1 || !strings.Contains(got[0], "a theme set in slides.md") {
+		t.Errorf("seriph: %q", got)
+	}
+	if got := SlidesReasons("slides.md", "---\naddons:\n  - slidev-addon-qrcode\n---\n", true); len(got) != 1 || !strings.Contains(got[0], "addons set in slides.md") {
+		t.Errorf("addons: %q", got)
+	}
+}
+
+func TestHeadmatterReasons(t *testing.T) {
+	for _, c := range []struct {
+		theme, addons string
+		want          int
+	}{
+		{``, ``, 0},
+		{`null`, `null`, 0},
+		{`"default"`, `[]`, 0},
+		{`"none"`, `[]`, 0},
+		{`""`, `[]`, 0},
+		{`"@slidev/theme-default"`, `[]`, 0},
+		{`"seriph"`, `[]`, 1},
+		{`"./x"`, `[]`, 1},
+		{`"default#/../../evil"`, `[]`, 1},
+		{`{"default theme":"./x"}`, `[]`, 1},
+		{`["default"]`, `[]`, 1},
+		{`"default"`, `["slidev-addon-x"]`, 1},
+		{`"default"`, `"./x"`, 1},
+		{`"./x"`, `["./a"]`, 2},
+	} {
+		if got := HeadmatterReasons(json.RawMessage(c.theme), json.RawMessage(c.addons)); len(got) != c.want {
+			t.Errorf("theme %s, addons %s: %q, want %d reasons", c.theme, c.addons, got, c.want)
+		}
 	}
 }
 
@@ -144,8 +173,7 @@ func TestCodeReasonsPlainHeadmatter(t *testing.T) {
 		"last line of block":   "---\ntitle: x\ntheme: default\n---\n# hi\n",
 		"no headmatter at all": "# hi\n",
 	} {
-		read := func(string) []byte { return []byte(slides) }
-		if got := CodeReasons([]string{"slides.md"}, "slides.md", read); len(got) != 0 {
+		if got := SlidesReasons("slides.md", slides, true); len(got) != 0 {
 			t.Errorf("%s: counted as code: %q", name, got)
 		}
 	}
@@ -173,7 +201,7 @@ func TestCodeReasonsFoldsNames(t *testing.T) {
 		{[]string{"unocſs.config"}, "unocſs.config (configuration that runs as code)"},
 		{[]string{"lib/x.MJS"}, "lib/x.MJS"},
 	} {
-		got := strings.Join(CodeReasons(c.names, "slides.md", read), "\n")
+		got := strings.Join(CodeReasons(c.names, read), "\n")
 		if got != c.want {
 			t.Errorf("%q: CodeReasons = %q, want %q", c.names, got, c.want)
 		}

@@ -227,6 +227,38 @@ func TestCodeDeckTakenOverWhileAsking(t *testing.T) {
 	}
 }
 
+func TestHeadmatterThemeAsks(t *testing.T) {
+	fs := useFakeSlidev(t)
+	home := t.TempDir()
+	deckPath := packFixture(t, t.TempDir()) // no code in its files
+	useHeadmatter(t, `"./my-theme"`, `[]`, nil)
+	fu, err := openAndStop(t, Options{Home: home, DeckPath: deckPath}, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fu.asked) != 1 || !strings.Contains(fu.asked[0], "./my-theme") {
+		t.Fatalf("asked %q, want one question naming the theme", fu.asked)
+	}
+	// Trusted with that theme; another theme in the same files asks again.
+	fs.mu.Lock()
+	fs.srv = newFakeServer(fs.srv.base)
+	fs.mu.Unlock()
+	useHeadmatter(t, `"./other"`, `[]`, nil)
+	fu, err = openAndStop(t, Options{Home: home, DeckPath: deckPath}, false, false)
+	if !errors.Is(err, ErrNotTrusted) || len(fu.asked) != 1 {
+		t.Errorf("changed theme: Open = %v, asked %q; want ErrNotTrusted after one question", err, fu.asked)
+	}
+}
+
+func TestHeadmatterThatCantBeReadAsks(t *testing.T) {
+	useFakeSlidev(t)
+	useHeadmatter(t, ``, ``, errors.New("node is missing"))
+	fu, err := openAndStop(t, Options{Home: t.TempDir(), DeckPath: packFixture(t, t.TempDir())}, false, false)
+	if !errors.Is(err, ErrNotTrusted) || len(fu.asked) != 1 || !strings.Contains(fu.asked[0], "headmatter") {
+		t.Errorf("Open = %v, asked %q; want a question about the headmatter", err, fu.asked)
+	}
+}
+
 func TestPlainDeckNotAsked(t *testing.T) {
 	useFakeSlidev(t)
 	home := t.TempDir()

@@ -29,26 +29,22 @@ var codeExts = map[string]bool{
 // own PostCSS settings, so Vite does not look for them.
 var configPrefixes = []string{"vite.config", "uno.config", "unocss.config", "postcss.config", ".postcssrc"}
 
-// CodeReasons lists why a deck contains code, one line per reason, in the
-// order of names; nil if it contains none. names are the deck's entry names
-// (as in the zip; a trailing slash marks a folder), entry is its slides file,
-// and read returns the content of an entry (nil if it can't). Only Markdown
-// and package.json files are read.
+// CodeReasons lists why a deck's files make it contain code, one line per
+// reason, in the order of names; nil if they don't. names are the deck's entry
+// names (as in the zip; a trailing slash marks a folder), and read returns the
+// content of an entry (nil if it can't). Only package.json files are read.
 //
 // It counts: config files Vite and UnoCSS load (vite.config*, uno.config*,
 // unocss.config*, and PostCSS's); everything under setup/; any .vue, .js, .ts
 // (and kin), .node or .wasm file, public/ included; each bundled package with
-// such a file, or whose package.json names an addon by path (once, by name);
-// a theme or addon given as a path in any Markdown file or in the talk's
-// package.json ("slidev": {"addons": [...]}); and any of these written in a
-// way this check can't be sure of. Packages of only CSS, fonts and data do
-// not count.
+// such a file, or whose package.json lists addons (once, by name); and any
+// package.json that lists addons, has a PostCSS config or can't be read.
+// Packages of only CSS, fonts and data do not count.
 //
-// Where Slidev reads a theme or addons with a full YAML parser, this check
-// does not parse: it looks at every line of every Markdown file, and counts
-// as code whatever is not plainly a package name (see markdownReasons). It
-// errs towards asking.
-func CodeReasons(names []string, entry string, read func(name string) []byte) []string {
+// The theme and addons in the slides' headmatter are not looked at here: the
+// viewer asks Slidev's own parser for them (slidev.ReadHeadmatter) and judges
+// them with HeadmatterReasons. SlidesReasons is a rougher check for pack.
+func CodeReasons(names []string, read func(name string) []byte) []string {
 	var reasons []string
 	seenPkg := map[string]bool{}
 	pkgReason := func(pkg string) {
@@ -57,7 +53,6 @@ func CodeReasons(names []string, entry string, read func(name string) []byte) []
 			reasons = append(reasons, "package "+pkg+" (bundled with the talk)")
 		}
 	}
-	var markdown []string
 	for _, name := range names {
 		if strings.HasSuffix(name, "/") || name == brand.ManifestName {
 			continue
@@ -90,12 +85,7 @@ func CodeReasons(names []string, entry string, read func(name string) []byte) []
 			reasons = append(reasons, name+" (setup code)")
 		case codeExts[path.Ext(low)]:
 			reasons = append(reasons, name)
-		case path.Ext(low) == ".md" || path.Ext(low) == ".markdown":
-			markdown = append(markdown, name)
 		}
-	}
-	for _, name := range markdown {
-		reasons = append(reasons, markdownReasons(name, string(read(name)), name == entry)...)
 	}
 	return reasons
 }
@@ -179,30 +169,50 @@ func packageOf(name string) (string, bool) {
 	return segs[0], true
 }
 
-// Themes and addons. Slidev reads them from the slides' headmatter with a full
-// YAML parser, and YAML has many ways to spell a key or to carry a value over
-// lines. Rather than match that parser, this check allows one plain form and
-// counts everything else as code:
-//
-//   - The only theme a talk may set without being asked about is one the
-//     runtime bundles (or none), on a line of its own in the --- block at the
-//     top of the slides file: `theme: default`. Nothing before it in the file
-//     may open a { or [ collection, and the line after it must start a new key.
-//   - Addons always count: the runtime bundles none, so each one comes from the
-//     talk (a folder, or a bundled package).
-//   - Any other line in any Markdown file that YAML could read as a theme: or
-//     addons: key counts, and so does any quoted key with an escape in it (which
-//     could spell "theme" without the letters) and any explicit "? key".
-//
-// So a talk about Slidev that shows `theme: ./my-theme` in a code block, or
-// says "theme:" in its text, is asked about too.
+// HeadmatterReasons judges the theme and addons Slidev's parser read from the
+// slides' headmatter (JSON values; null or missing when not set). A theme that
+// isn't one the runtime bundles counts, and so do any addons: the runtime
+// bundles none, so each comes from the talk, a folder or a bundled package.
+func HeadmatterReasons(theme, addons json.RawMessage) []string {
+	var out []string
+	var name string
+	switch {
+	case isNull(theme):
+	case json.Unmarshal(theme, &name) == nil && (name == "" || bundledThemes[name]):
+	default:
+		out = append(out, "the theme "+oneValue(theme)+` (any theme but the bundled "default" can run code)`)
+	}
+	var list []json.RawMessage
+	if !isNull(addons) && (json.Unmarshal(addons, &list) != nil || len(list) > 0) {
+		out = append(out, "the addons "+oneValue(addons)+" (addons can run code)")
+	}
+	return out
+}
+
+func isNull(v json.RawMessage) bool {
+	t := bytes.TrimSpace(v)
+	return len(t) == 0 || string(t) == "null"
+}
+
+// oneValue is a JSON value cut short for a reason line.
+func oneValue(v json.RawMessage) string {
+	s := string(bytes.TrimSpace(v))
+	if len(s) > 80 {
+		s = s[:77] + "..."
+	}
+	return s
+}
 
 var (
 	// themeKey is theme or addons followed by a colon, as a key may be written:
 	// quoted or not, with blanks before the colon. Case matters, as in YAML.
 	themeKey = regexp.MustCompile(`(?:^|[^A-Za-z0-9_-])(theme|addons)["']?[ \t]*:`)
 	// plainTheme is the one allowed form of a theme line; group 2 is the name.
-	plainTheme = regexp.MustCompile(`^theme:[ \t]*(["']?)([A-Za-z0-9@/._-]+)(["']?)[ \t]*(?:#.*)?$`)
+	// A # starts a comment only after a blank: `default#x` is all one value.
+	plainTheme = regexp.MustCompile(`^theme:[ \t]*(["']?)([A-Za-z0-9@/._-]+)(["']?)(?:[ \t]+#.*)?[ \t]*$`)
+	// anchorOrAlias is a YAML anchor, alias or merge key, which can make a key
+	// "theme" without spelling it: `x: &k theme` then `*k : ./folder`.
+	anchorOrAlias = regexp.MustCompile(`(?:^|[\s{\[,:?-])[&*][^\s]|<<`)
 	// escapedKey is a double-quoted key with an escape in it; explicitKey is
 	// YAML's "? key" form, at the start of a line or in a flow collection.
 	escapedKey  = regexp.MustCompile(`"(?:[^"\\]|\\.)*\\(?:[^"\\]|\\.)*"[ \t]*:`)
@@ -221,9 +231,28 @@ var (
 	}()
 )
 
-// markdownReasons lists why a Markdown file may make Slidev load a theme or
-// addons from the talk (see above). isEntry is true for the slides file.
-func markdownReasons(name, text string, isEntry bool) []string {
+// SlidesReasons is a rough check, for pack's note, of whether a Markdown file
+// sets a theme or addons that would count. The viewer does not use it: it asks
+// Slidev's parser (see HeadmatterReasons). Slidev reads the headmatter with a
+// full YAML parser, and YAML has many ways to spell a key or to carry a value
+// over lines; this check allows one plain form and counts everything else:
+//
+//   - The only theme a talk may set without being asked about is one the
+//     runtime bundles (or none), on a line of its own in the --- block at the
+//     top of the slides file: `theme: default`. Nothing before it in the file
+//     may open a { or [ collection, and the line after it must start a new key.
+//   - Addons always count: the runtime bundles none, so each one comes from the
+//     talk (a folder, or a bundled package).
+//   - Any other line in any Markdown file that YAML could read as a theme: or
+//     addons: key counts, and so does any quoted key with an escape in it (which
+//     could spell "theme" without the letters) and any explicit "? key".
+//
+// So a talk about Slidev that shows `theme: ./my-theme` in a code block, or
+// says "theme:" in its text, is noted too. isEntry is true for the slides file.
+func SlidesReasons(name, text string, isEntry bool) []string {
+	// Slidev splits lines on \n only, its YAML parser on \r too; other breaks
+	// are split here so nothing hides behind them, but they rule out the plain form.
+	odd := strings.ContainsAny(text, "\u0085\u2028\u2029")
 	lines := strings.Split(lineBreaks.Replace(strings.TrimPrefix(text, BOM)), "\n")
 	headEnd := 0 // lines[1:headEnd] are the --- block at the top, if any
 	if isEntry && isFence(lines[0]) {
@@ -238,11 +267,11 @@ func markdownReasons(name, text string, isEntry bool) []string {
 	flow := false // a { or [ has been seen in the file so far
 	for i, l := range lines {
 		switch {
-		case escapedKey.MatchString(l) || explicitKey.MatchString(l):
+		case escapedKey.MatchString(l) || explicitKey.MatchString(l) || (i < headEnd && anchorOrAlias.MatchString(l)):
 			out = append(out, "a YAML key in "+name+" (written in a way that can't be checked)")
 		case themeKey.MatchString(l):
 			m := plainTheme.FindStringSubmatch(l)
-			if i > 0 && i < headEnd && !flow && m != nil && m[1] == m[3] && bundledThemes[m[2]] && newKeyFollows(lines[i+1:]) {
+			if !odd && i > 0 && i < headEnd && !flow && m != nil && m[1] == m[3] && bundledThemes[m[2]] && newKeyFollows(lines[i+1:]) {
 				break // theme: default
 			}
 			key := themeKey.FindStringSubmatch(l)[1]

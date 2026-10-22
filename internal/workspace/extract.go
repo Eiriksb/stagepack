@@ -25,8 +25,8 @@ type Work struct {
 	// Entries are the deck's entry names in zip order, the manifest left out.
 	// Rebuild packs exactly these back.
 	Entries []string
-	// Code says why opening the deck runs code it brought along
-	// (deck.CodeReasons); empty when it brings none.
+	// Code says why opening the deck runs code it brought along: its files
+	// (deck.CodeReasons), and what AddCode adds. Empty when it brings none.
 	Code []string
 	// Hash is a hex SHA-256 over the name and content of every entry but the
 	// manifest and the slides file (which note edits change), and over Code.
@@ -36,6 +36,22 @@ type Work struct {
 
 // HasCode reports whether opening the deck runs code it brought along.
 func (w Work) HasCode() bool { return len(w.Code) > 0 }
+
+// AddCode adds reasons the deck contains code that only show once it is
+// unpacked (the theme and addons in its headmatter), and folds them into Hash,
+// so a change to them asks again.
+func (w *Work) AddCode(reasons ...string) {
+	if len(reasons) == 0 {
+		return
+	}
+	w.Code = append(w.Code, reasons...)
+	h := sha256.New()
+	fmt.Fprintln(h, w.Hash)
+	for _, r := range reasons {
+		fmt.Fprintf(h, "code %q\n", r)
+	}
+	w.Hash = hex.EncodeToString(h.Sum(nil))
+}
 
 const defaultEntry = "slides.md"
 
@@ -110,7 +126,7 @@ func Extract(deckPath, runtimeDir string) (Work, error) {
 		data, _ := os.ReadFile(filepath.Join(dir, filepath.FromSlash(deck.ExtractedPath(name))))
 		return data
 	}
-	w := Work{Dir: dir, Manifest: m, Entries: names, Code: deck.CodeReasons(names, m.Entry, read)}
+	w := Work{Dir: dir, Manifest: m, Entries: names, Code: deck.CodeReasons(names, read)}
 	sort.Strings(sums)
 	h := sha256.New()
 	for _, l := range sums {

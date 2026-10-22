@@ -161,9 +161,16 @@ func Pack(o Options) (deck.Manifest, error) {
 		data, _ := os.ReadFile(it.src)
 		return data
 	}
-	if reasons := deck.CodeReasons(names, entry, read); len(reasons) > 0 {
+	reasons := deck.CodeReasons(names, read)
+	for _, n := range names {
+		if strings.EqualFold(path.Ext(n), ".md") {
+			reasons = append(reasons, deck.SlidesReasons(n, string(read(n)), n == entry)...)
+		}
+	}
+	if len(reasons) > 0 {
 		fmt.Fprintf(warn, "note: this talk contains code, which runs on the presenter's computer, so the viewer "+
-			"asks before showing it (once for each version of the talk). It contains code because of:\n  %s\n",
+			"asks before showing it (once for each version of the talk). It contains code because of (theme and "+
+			"addons lines are a rough check; the viewer asks Slidev's own parser):\n  %s\n",
 			strings.Join(reasons, "\n  "))
 	}
 

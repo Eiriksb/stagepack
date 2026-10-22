@@ -91,21 +91,21 @@ The viewer asks the presenter before it shows a talk that contains code (see "Fo
 - `"slidev": {"addons": [...]}` or a `"postcss"` key in any `package.json`, or a `package.json` that isn't
   valid JSON.
 
-Slidev reads the headmatter with a full YAML parser, and YAML has many ways to write a key or carry a value
-over lines. The viewer doesn't try to match that parser. It allows one plain form and counts everything else:
+Slidev reads the theme and addons from the headmatter with a full YAML parser, and YAML has many ways to write
+a key or carry a value over lines. So the viewer doesn't guess: before it asks, it runs Slidev's own parser
+(the runtime's `@slidev/parser`, with the bundled Node, on the unpacked slides file only) and judges what that
+returns. Nothing from the talk runs for this. The only theme that needs no question is the bundled one
+(`default`, `none` or `@slidev/theme-default`). Any other theme and any addons count, also those set under
+`config:`, and so does a headmatter that can't be read. A changed theme or addon list asks again.
 
-- The only theme line that needs no question is the bundled theme on a line of its own in the `---` block at the
-  top of the slides file: `theme: default` (or `theme: none`, or `theme: "@slidev/theme-default"`). It must
-  not follow a `{` or `[`, and the next line must start a new key at the left edge.
-- Any other line in any Markdown file where `theme` or `addons` is followed by a colon counts, and so does any
-  quoted key with an escape in it and any `? key`.
-
-So a talk that uses another theme (bundle it and it still asks, since a theme has components), a talk *about*
-Slidev that shows `theme: ./my-theme` in a code block, and a slide that says "theme:" in its text are all asked
-about. File names are compared ignoring case, as Windows finds them.
+`stagepack pack` has no Node of its own, so its note uses a rougher check: it allows only `theme: default` on its
+own line in the `---` block at the top of the slides file, and names any other `theme:` or `addons:` line, in
+code blocks and slide text too. The viewer may not ask about all of those. File names are compared ignoring
+case, as Windows finds them.
 
 The answer is remembered per talk (its id) and version: a hash of every file in it except the slides file, which
-note edits change. Any other change, repacking included, asks again. The list is `trusted.json` in the
+note edits change, and of the reasons it contains code (so of its theme and addons). Any other change,
+repacking included, asks again. The list is `trusted.json` in the
 viewer's home. Where nobody can be asked (`stagepack open --headless`, and on Linux, where there is no tray),
 the answer is No; `stagepack open --trust-code FILE` runs a talk you trust without asking, and does not add it
 to the list.

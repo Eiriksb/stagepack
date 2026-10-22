@@ -486,8 +486,7 @@ func TestExtractClassifiesCode(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{"vite.config.ts (configuration that runs as code)", "public/a.js", "package x (bundled with the talk)",
-		"package y (bundled with the talk)", "package.json (it lists Slidev addons, which can run code)",
-		`a theme set in slides.md (any theme but the bundled "default" can run code)`}
+		"package y (bundled with the talk)", "package.json (it lists Slidev addons, which can run code)"}
 	if !w.HasCode() || !sameList(w.Code, want) {
 		t.Errorf("Code = %q, want %q", w.Code, want)
 	}
@@ -512,14 +511,30 @@ func TestExtractHash(t *testing.T) {
 		t.Error("the order of the entries changed the hash")
 	}
 	for name, entries := range map[string][]entry{
-		"changed config":                      {slides, {name: "vite.config.ts", data: "export default { x: 1 }"}},
-		"renamed config":                      {slides, {name: "vite.config.mts", data: cfg.data}},
-		"added file":                          {slides, cfg, {name: "public/a.png", data: "png"}},
-		"theme by path":                       {{name: "slides.md", data: "---\ntheme: ./t\n---\n# hi"}, cfg},
-		"theme in a code block of the slides": {{name: "slides.md", data: "# hi\n```yaml\ntheme: ./t\n```\n"}, cfg},
+		"changed config": {slides, {name: "vite.config.ts", data: "export default { x: 1 }"}},
+		"renamed config": {slides, {name: "vite.config.mts", data: cfg.data}},
+		"added file":     {slides, cfg, {name: "public/a.png", data: "png"}},
 	} {
 		if hash(entries...) == base {
 			t.Errorf("%s: same hash", name)
 		}
+	}
+}
+
+func TestAddCode(t *testing.T) {
+	w, err := Extract(writeDeck(t, "53.0.0", entry{name: "slides.md", data: "# hi"}), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := w.Hash
+	w.AddCode()
+	if w.HasCode() || w.Hash != before {
+		t.Error("adding no reasons changed the deck")
+	}
+	a, b := w, w
+	a.AddCode("the theme \"./t\"")
+	b.AddCode("the theme \"./u\"")
+	if !a.HasCode() || a.Hash == before || a.Hash == b.Hash {
+		t.Errorf("hashes: before %s, ./t %s, ./u %s; want three different", before, a.Hash, b.Hash)
 	}
 }

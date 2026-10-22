@@ -59,6 +59,9 @@ type server interface {
 	Done() <-chan error
 }
 
+// readHeadmatter is slidev.ReadHeadmatter; tests replace it.
+var readHeadmatter = slidev.ReadHeadmatter
+
 // startSlidev is slidev.Start; tests replace it.
 var startSlidev = func(ctx context.Context, c slidev.Config, port int) (server, error) {
 	s, err := slidev.Start(ctx, c, port)
@@ -185,6 +188,14 @@ func Open(ctx context.Context, o Options) error {
 	if m.Title != "" {
 		s.title = m.Title
 	}
+	// 3a. The theme and addons Slidev will load, as its own parser reads them.
+	if hm, err := readHeadmatter(s.ctx, s.nodePath(), s.rtDir, filepath.Join(work.Dir, m.Entry)); err != nil {
+		log.Printf("check the headmatter of %s: %v", deckPath, err)
+		work.AddCode("the slides' headmatter (it couldn't be checked)")
+	} else {
+		work.AddCode(deck.HeadmatterReasons(hm.Theme, hm.Addons)...)
+	}
+	s.work = work
 	// 3b. Code the talk brought along runs as this user once Slidev starts: ask
 	// first, once for each version of the talk.
 	if work.HasCode() {
@@ -358,13 +369,17 @@ func (s *session) start() {
 	}
 }
 
-func (s *session) startup() error {
-	node := filepath.Join(s.home, "node", "bin", "node")
+// nodePath is the bundled node program.
+func (s *session) nodePath() string {
 	if s.o.GOOS == "windows" {
-		node = filepath.Join(s.home, "node", "node.exe")
+		return filepath.Join(s.home, "node", "node.exe")
 	}
+	return filepath.Join(s.home, "node", "bin", "node")
+}
+
+func (s *session) startup() error {
 	cfg := slidev.Config{
-		Node: node, CLI: filepath.Join(s.rtDir, "node_modules", "@slidev", "cli", "bin", "slidev.mjs"),
+		Node: s.nodePath(), CLI: filepath.Join(s.rtDir, "node_modules", "@slidev", "cli", "bin", "slidev.mjs"),
 		WorkDir: s.work.Dir, Entry: s.entry, LogPath: s.logPath,
 	}
 	port, err := slidev.FreePort()

@@ -97,7 +97,19 @@ func useFakeSlidev(t *testing.T) *fakeSlidev {
 		return f.srv, nil
 	}
 	t.Cleanup(func() { startSlidev = old })
+	useHeadmatter(t, `"default"`, `[]`, nil)
 	return f
+}
+
+// useHeadmatter makes the app see this theme and these addons (JSON) in every
+// talk's headmatter, or err, instead of running Slidev's parser.
+func useHeadmatter(t *testing.T, theme, addons string, err error) {
+	t.Helper()
+	old := readHeadmatter
+	readHeadmatter = func(ctx context.Context, node, runtimeDir, slidesPath string) (slidev.Headmatter, error) {
+		return slidev.Headmatter{Theme: json.RawMessage(theme), Addons: json.RawMessage(addons)}, err
+	}
+	t.Cleanup(func() { readHeadmatter = old })
 }
 
 func (f *fakeSlidev) configs() []slidev.Config {
@@ -704,6 +716,7 @@ func TestOpeningClosedWhenSlidevFailsToStart(t *testing.T) {
 		return nil, errors.New("no node here")
 	}
 	t.Cleanup(func() { startSlidev = old })
+	useHeadmatter(t, `"default"`, `[]`, nil)
 	home := t.TempDir()
 	deckPath := packFixture(t, t.TempDir())
 	fu, br := newFakeUI(), &browserLog{}
