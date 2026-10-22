@@ -186,12 +186,19 @@ The viewer asks the presenter before it shows a talk that contains code (see "Fo
 - anything under `setup/`;
 - any `.vue`, `.js`, `.mjs`, `.cjs`, `.ts`, `.mts`, `.cts`, `.jsx`, `.tsx`, `.node` or `.wasm` file, also in
   `public/`;
-- a bundled package that holds such a file, or whose `package.json` lists Slidev addons (packages of only CSS
+- a bundled package that holds such a file, or whose `package.json` lists Slidev addons (other packages of only CSS
   and fonts, like Fontsource, don't count);
 - any theme but the one the runtime bundles, and any addon but the export addon the runtime bundles
   (`stagepack`, `slidev-addon-stagepack`; see above);
 - a bundled package with `stagepack` in its name, whatever it holds: Slidev would find it instead of the
   runtime's export addon;
+- a bundled package, whatever it holds, with the name of a package the runtime has (`@slidev/theme-default`,
+  `@slidev/client`, `vue`, the runtime's fonts and the rest), or of one Slidev tries for the bundled theme
+  (`slidev-theme-default`, `default`), or of one Slidev or Vite loads from the talk's folder (`vite-plugin-pwa`,
+  `playwright-chromium`, and the CSS preprocessors `sass-embedded`, `sass`, `sugarss`, `less`, `stylus`).
+  Slidev and Vite look in the talk's `node_modules` first, so the talk's copy would be used: a theme's
+  `index.html`, scripts and all, goes into the page, and Node runs a package's entry file whatever its
+  extension. `stagepack pack` never bundles a package the runtime has;
 - `"slidev": {"addons": [...]}` listing any other addon, or a `"postcss"` key, in any `package.json`, or a
   `package.json` that isn't valid JSON.
 

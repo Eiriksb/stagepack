@@ -38,11 +38,12 @@ var configPrefixes = []string{"vite.config", "uno.config", "unocss.config", "pos
 // unocss.config*, and PostCSS's); everything under setup/; any .vue, .js, .ts
 // (and kin), .node or .wasm file, public/ included; each bundled package with
 // such a file, or whose package.json lists addons (once, by name), and each
-// bundled package with the export addon's name in its own, whatever it holds
-// (shadowsAddon); and any package.json that lists addons, has a PostCSS config
-// or can't be read. Packages of only CSS, fonts and data do not count. The
-// export addon (brand.AddonPkg), which the runtime bundles, doesn't count as an
-// addon anywhere.
+// bundled package with the export addon's name in its own (shadowsAddon), or
+// that Slidev or Vite would load instead of the runtime's own or from the talk
+// (shadowsRuntime), whatever it holds; and any package.json that lists addons,
+// has a PostCSS config or can't be read. Other packages of only CSS, fonts and
+// data do not count. The export addon (brand.AddonPkg), which the runtime
+// bundles, doesn't count as an addon anywhere.
 //
 // The theme and addons in the slides' headmatter are not looked at here: the
 // viewer asks Slidev's own parser for them (slidev.ReadHeadmatter) and judges
@@ -64,7 +65,7 @@ func CodeReasons(names []string, read func(name string) []byte) []string {
 		// Node_Modules/x/Package.json as node_modules/x/package.json.
 		low := fold(name)
 		pkg, inPkg := packageOf(low)
-		if inPkg && shadowsAddon(pkg) {
+		if inPkg && (shadowsAddon(pkg) || shadowsRuntime(pkg)) {
 			pkgReason(pkg)
 			continue
 		}
@@ -173,6 +174,56 @@ func isBundledAddon(v json.RawMessage) bool {
 func shadowsAddon(pkg string) bool {
 	return strings.Contains(pkg, fold(brand.AddonName))
 }
+
+// shadowsRuntime reports whether a bundled package (its folded name) is one
+// the runtime has, one Slidev tries for a bundled theme (themePackages), or one
+// Slidev or Vite loads from the talk's folder (talkLoads). Such a package counts
+// as code whatever it holds. Slidev looks for a theme from the talk's folder
+// up, so the talk's copy comes before the runtime's, and it puts the theme's
+// index.html, scripts and all, into the page. Vite's root is the talk's folder,
+// so the talk's node_modules comes first for the bare imports Slidev's own
+// modules make. And Node runs a package's entry file as JavaScript whatever its
+// extension, or with none. Pack never bundles a package the runtime has, so a
+// talk only has one if it was made by hand.
+func shadowsRuntime(pkg string) bool { return runtimeShadows[pkg] }
+
+// themePackages are the packages Slidev tries, in order, for a theme name that
+// isn't a path (createResolver in @slidev/cli): @slidev/theme-<name> and
+// slidev-theme-<name> for an unscoped name, then the name itself. "none" loads
+// no theme.
+func themePackages(name string) []string {
+	if name == "none" {
+		return nil
+	}
+	if strings.Contains(name, "/") || strings.HasPrefix(name, "@") {
+		return []string{name}
+	}
+	return []string{"@slidev/theme-" + name, "slidev-theme-" + name, name}
+}
+
+// talkLoads are packages the runtime lacks that Slidev 53 and Vite 8 import
+// from the talk's folder when a talk needs them: vite-plugin-pwa for the pwa
+// option, playwright-chromium for slidev export, and Vite's CSS preprocessors
+// for .scss, .sass, .less, .styl and .sss files. A real one holds .js files, so
+// counting it whatever it holds asks no more than before.
+var talkLoads = []string{"vite-plugin-pwa", "playwright-chromium", "sass-embedded", "sass", "sugarss", "less", "stylus"}
+
+// runtimeShadows are the folded names shadowsRuntime counts.
+var runtimeShadows = func() map[string]bool {
+	m := map[string]bool{}
+	for pkg := range slidevrt.Lock() {
+		m[fold(pkg)] = true
+	}
+	for name := range bundledThemes {
+		for _, pkg := range themePackages(name) {
+			m[fold(pkg)] = true
+		}
+	}
+	for _, pkg := range talkLoads {
+		m[pkg] = true
+	}
+	return m
+}()
 
 func hasAnyPrefix(s string, prefixes []string) bool {
 	for _, p := range prefixes {

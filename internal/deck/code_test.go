@@ -64,6 +64,21 @@ func TestCodeReasons(t *testing.T) {
 			"package @slidev/addon-" + brand.AddonName + " (bundled with the talk)", "package " + brand.AddonPkg + " (bundled with the talk)",
 			"package " + brand.AddonName + " (bundled with the talk)", "package @slidev/addon-slidev-addon-stagepack (bundled with the talk)"},
 			map[string]string{"vendor/node_modules/" + brand.AddonName + "/package.json": `{}`}},
+		{"a bundled package that could stand in for the bundled theme, whatever it holds", []string{
+			"vendor/node_modules/@slidev/theme-default/package.json", "vendor/node_modules/@slidev/theme-default/index.html",
+			"node_modules/Slidev-Theme-Default/index.html", "vendor/node_modules/default/index.html",
+			"vendor/node_modules/@slidev/theme-defaults/a.css", "vendor/node_modules/theme-default/a.css"}, plain, []string{
+			"package @slidev/theme-default (bundled with the talk)", "package slidev-theme-default (bundled with the talk)",
+			"package default (bundled with the talk)"},
+			map[string]string{"vendor/node_modules/@slidev/theme-default/package.json": `{"name": "@slidev/theme-default"}`}},
+		{"a bundled package with the name of one the runtime has or loads from the talk, whatever it holds", []string{
+			"vendor/node_modules/@slidev/client/index.html", "vendor/node_modules/@fontsource-variable/inter/index.css",
+			"vendor/node_modules/vite/package.json", "node_modules/Vue/README", "vendor/node_modules/vite-plugin-pwa/index",
+			"vendor/node_modules/playwright-chromium/index", "vendor/node_modules/vue-extra/a.css"}, plain, []string{
+			"package @slidev/client (bundled with the talk)", "package @fontsource-variable/inter (bundled with the talk)",
+			"package vite (bundled with the talk)", "package vue (bundled with the talk)", "package vite-plugin-pwa (bundled with the talk)",
+			"package playwright-chromium (bundled with the talk)"},
+			map[string]string{"vendor/node_modules/vite/package.json": `{}`}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

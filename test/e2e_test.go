@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"syscall"
 	"testing"
@@ -301,6 +302,178 @@ func TestE2ECodeDeck(t *testing.T) {
 		}
 	case <-time.After(60 * time.Second):
 		t.Fatal("the viewer did not exit within 60 s of SIGTERM")
+	}
+}
+
+// A talk with `theme: default` that bundles its own @slidev/theme-default, of only a package.json and an
+// index.html, is asked about: Slidev finds the talk's copy before the runtime's and puts the script in its
+// index.html into the page. Pack never bundles a runtime package, so the entries are added to the zip after.
+func TestE2EShadowedThemeDeck(t *testing.T) {
+	home, rt := linuxBuild(t)
+	workBefore := listDir(t, filepath.Join(rt, "work"))
+	tmp := t.TempDir()
+	bin := buildViewer(t, tmp)
+
+	src := filepath.Join(tmp, "src")
+	if err := os.CopyFS(src, os.DirFS(filepath.Join("..", "testdata", "deck"))); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(filepath.Join(src, "slides.md")); err != nil || !strings.Contains(string(data), "\ntheme: default\n") {
+		t.Fatalf("testdata/deck/slides.md does not set theme: default (%v)", err)
+	}
+	deckPath := filepath.Join(tmp, "theme"+brand.Ext)
+	m, err := pack.Pack(pack.Options{Dir: src, Out: deckPath, Warn: io.Discard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const marker = "stagepack-shadowed-theme-ran"
+	theme := "vendor/node_modules/@slidev/theme-default/"
+	addEntries(t, deckPath, map[string]string{
+		theme + "package.json": `{"name": "@slidev/theme-default", "version": "0.25.0"}`,
+		theme + "index.html":   "<body><script>window['" + marker + "'] = 1</script></body>\n",
+	})
+	t.Cleanup(func() { os.Remove(filepath.Join(home, "logs", save.JournalKey(m.ID, deckPath)+".log")) })
+	urlFile := filepath.Join(tmp, "url.txt")
+	env := append(os.Environ(), "BROWSER="+browserScript(t, tmp, urlFile))
+
+	// pageHolds fetches the talk's page from the URL the viewer opened and looks for the marker.
+	pageHolds := func(url string) bool {
+		t.Helper()
+		resp, err := http.Get(url[:strings.Index(url, "/presenter")] + "/")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		page, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.Contains(string(page), marker)
+	}
+	readURL := func() string {
+		data, _ := os.ReadFile(urlFile)
+		return strings.TrimSpace(string(data))
+	}
+
+	// 1. Headless: asked, the answer is no, nothing opened. Should it open instead, stop it there.
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command(bin, "open", "--headless", "--home", home, deckPath)
+	cmd.Env, cmd.Stdout, cmd.Stderr = env, &stdout, &stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	exited := make(chan error, 1)
+	go func() { exited <- cmd.Wait() }()
+	deadline := time.Now().Add(3 * time.Minute)
+	err = errors.New("it did not exit")
+wait:
+	for time.Now().Before(deadline) && readURL() == "" {
+		select {
+		case err = <-exited:
+			break wait
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	if cmd.ProcessState == nil {
+		if url := readURL(); url != "" {
+			t.Errorf("opened without asking; the bundled theme's script is in the page: %v", pageHolds(url))
+		}
+		cmd.Process.Signal(syscall.SIGTERM)
+		select {
+		case <-exited:
+		case <-time.After(30 * time.Second):
+			cmd.Process.Kill()
+		}
+	}
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 1 {
+		t.Fatalf("open without --trust-code: %v, want exit 1\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"event":"confirm"`) || !strings.Contains(stdout.String(), "package @slidev/theme-default") {
+		t.Errorf("no confirm line naming the bundled @slidev/theme-default:\n%s", stdout.String())
+	}
+	if _, err := os.Stat(urlFile); !os.IsNotExist(err) {
+		t.Errorf("a browser was opened (%v)", err)
+	}
+	// Only this deck's folders: internal/slidev's tests may be using the work folder at the same time.
+	for _, d := range newEntries(listDir(t, filepath.Join(rt, "work")), workBefore) {
+		if _, err := os.Stat(filepath.Join(rt, "work", d, "node_modules", "@slidev", "theme-default", "index.html")); err == nil {
+			t.Errorf("work folder left: %s", d)
+		}
+	}
+
+	// 2. With --trust-code it opens, and the page holds the talk's script: the reason to ask was real.
+	stdout.Reset()
+	stderr.Reset()
+	cmd = exec.Command(bin, "open", "--headless", "--trust-code", "--home", home, deckPath)
+	cmd.Env, cmd.Stdout, cmd.Stderr = env, &stdout, &stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	exited = make(chan error, 1)
+	go func() { exited <- cmd.Wait() }()
+	defer func() {
+		if cmd.ProcessState == nil {
+			cmd.Process.Signal(syscall.SIGTERM)
+			select {
+			case <-exited:
+			case <-time.After(30 * time.Second):
+				cmd.Process.Kill()
+			}
+		}
+		t.Logf("stdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
+	}()
+	waitFor(t, 3*time.Minute, "the browser URL", func() bool { return readURL() != "" })
+	if !pageHolds(readURL()) {
+		t.Error("the page does not hold the bundled theme's script")
+	}
+	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-exited:
+		if err != nil {
+			t.Fatalf("the viewer exited with %v", err)
+		}
+	case <-time.After(60 * time.Second):
+		t.Fatal("the viewer did not exit within 60 s of SIGTERM")
+	}
+}
+
+// addEntries rewrites the deck at deckPath with files added after its own entries.
+func addEntries(t *testing.T, deckPath string, files map[string]string) {
+	t.Helper()
+	zr, err := zip.OpenReader(deckPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer zr.Close()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for _, f := range zr.File {
+		if err := zw.Copy(f); err != nil {
+			t.Fatal(err)
+		}
+	}
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		w, err := zw.Create(name)
+		if err == nil {
+			_, err = io.WriteString(w, files[name])
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(deckPath, buf.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 
