@@ -6,6 +6,7 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"stagepack/internal/brand"
 )
@@ -56,20 +57,28 @@ func CodeReasons(names []string, entry string, read func(name string) []byte) []
 		}
 	}
 	var markdown []string
-	hasPackageJSON := false
 	for _, name := range names {
-		hasPackageJSON = hasPackageJSON || name == "package.json"
 		if strings.HasSuffix(name, "/") || name == brand.ManifestName {
 			continue
 		}
-		low := strings.ToLower(name) // Windows finds Vite.Config.TS as vite.config.ts
-		if pkg, ok := packageOf(name); ok {
+		// Compared folded: Windows finds Vite.Config.TS as vite.config.ts and
+		// Node_Modules/x/Package.json as node_modules/x/package.json.
+		low := fold(name)
+		pkg, inPkg := packageOf(low)
+		if path.Base(low) == "package.json" {
+			// Every one of them: the talk's, a bundled package's, a theme folder's.
+			for _, why := range packageJSONReasons(read(name)) {
+				if inPkg {
+					pkgReason(pkg)
+				} else {
+					reasons = append(reasons, name+" ("+why+")")
+				}
+			}
+			continue
+		}
+		if inPkg {
 			if codeExts[path.Ext(low)] || hasAnyPrefix(path.Base(low), configPrefixes) {
 				pkgReason(pkg)
-			} else if path.Base(name) == "package.json" {
-				if paths, postcss, ok := pathAddons(read(name)); !ok || postcss || len(paths) > 0 {
-					pkgReason(pkg)
-				}
 			}
 			continue
 		}
@@ -87,19 +96,37 @@ func CodeReasons(names []string, entry string, read func(name string) []byte) []
 	for _, name := range markdown {
 		reasons = append(reasons, markdownReasons(name, string(read(name)))...)
 	}
-	if hasPackageJSON {
-		paths, postcss, ok := pathAddons(read("package.json"))
-		if !ok {
-			reasons = append(reasons, "package.json (it can't be read, so its addons can't be checked)")
-		}
-		if postcss {
-			reasons = append(reasons, `package.json ("postcss": configuration that runs as code)`)
-		}
-		for _, a := range paths {
-			reasons = append(reasons, "addon "+a+" (loaded from a folder, named in package.json)")
-		}
-	}
 	return reasons
+}
+
+// packageJSONReasons says why a package.json makes a deck contain code: it
+// can't be read, it has a PostCSS config, or it names an addon by path.
+func packageJSONReasons(data []byte) []string {
+	paths, postcss, ok := pathAddons(data)
+	var why []string
+	if !ok {
+		why = append(why, "it can't be read, so its addons can't be checked")
+	}
+	if postcss {
+		why = append(why, `"postcss": configuration that runs as code`)
+	}
+	for _, a := range paths {
+		why = append(why, "names addon "+a+", loaded from a folder")
+	}
+	return why
+}
+
+// fold is s as a case-insensitive file system may see it: each letter as the
+// lower case of the smallest letter it folds with (ſ as s, the Kelvin sign as
+// k). It may make more names alike than Windows does, which only asks more.
+func fold(s string) string {
+	return strings.Map(func(r rune) rune {
+		least := r
+		for f := unicode.SimpleFold(r); f != r; f = unicode.SimpleFold(f) {
+			least = min(least, f)
+		}
+		return unicode.ToLower(least)
+	}, s)
 }
 
 // pathAddons lists the addons a package.json names in "slidev": {"addons": [...]}
@@ -141,7 +168,7 @@ func hasAnyPrefix(s string, prefixes []string) bool {
 }
 
 // packageOf returns the package a vendor/node_modules/ (or node_modules/)
-// entry belongs to: its top-level package, scoped names included.
+// entry belongs to: its top-level package, scoped names included. name is folded.
 func packageOf(name string) (string, bool) {
 	rest, ok := strings.CutPrefix(name, vendorPrefix)
 	if !ok {
@@ -168,9 +195,10 @@ var (
 	// indentation, 2 the key, 3 what follows the colon.
 	themeKey = regexp.MustCompile(`(?:^([ \t]*)(?:[-?][ \t]+)*|[{\[,][ \t]*)(?:[!&][^ \t]*[ \t]+)*["']?(theme|addons)["']?[ \t]*:(.*)$`)
 	// escapedKey is a double-quoted key with an escape in it, which could spell
-	// "theme" without the letters; explicitKey is YAML's "? key" form.
+	// "theme" without the letters; explicitKey is YAML's "? key" form, at the
+	// start of a line or in a flow collection.
 	escapedKey  = regexp.MustCompile(`"(?:[^"\\]|\\.)*\\(?:[^"\\]|\\.)*"[ \t]*:`)
-	explicitKey = regexp.MustCompile(`^[ \t]*\?(?:[ \t]|$)`)
+	explicitKey = regexp.MustCompile(`(?:^|[{\[,])[ \t]*\?(?:[ \t]|$)`)
 	// lineBreaks are what YAML parsers may take as the end of a line.
 	lineBreaks = strings.NewReplacer("\r\n", "\n", "\r", "\n", "\u0085", "\n", "\u2028", "\n", "\u2029", "\n")
 )
@@ -194,14 +222,18 @@ func markdownReasons(name, text string) []string {
 			unclear("a YAML key")
 			continue
 		}
-		m := themeKey.FindStringSubmatch(l)
-		if m == nil {
+		ix := themeKey.FindStringSubmatchIndex(l)
+		if ix == nil {
 			continue
 		}
-		indent, key, v := len(m[1]), m[2], yamlValue(m[3])
-		if m[1] == "" {
-			indent = len(l) - len(strings.TrimLeft(l, " \t"))
+		key, v := l[ix[4]:ix[5]], yamlValue(l[ix[6]:ix[7]])
+		if ix[2] < 0 {
+			// In a flow collection ({…} or […]) a value may go on over lines at
+			// any indentation: never plain enough.
+			unclear(key)
+			continue
 		}
+		indent := ix[3] - ix[2]
 		var items []string
 		switch {
 		case key == "addons" && strings.HasPrefix(v, "["):
@@ -236,7 +268,7 @@ func markdownReasons(name, text string) []string {
 				items = append(items, yamlValue(item))
 			}
 		default:
-			if continues(lines[i+1:], indent) {
+			if continues(lines[i+1:], indent) || listFollows(lines[i+1:], indent) {
 				unclear(key) // a value that may go on, or a nested one
 				continue
 			}
@@ -291,6 +323,19 @@ func continues(rest []string, indent int) bool {
 			continue
 		}
 		return len(sub)-len(t) > indent
+	}
+	return false
+}
+
+// listFollows reports whether the next line that holds something is a "- "
+// item at indent: the value is a list.
+func listFollows(rest []string, indent int) bool {
+	for _, sub := range rest {
+		t := strings.TrimLeft(sub, " \t")
+		if t == "" {
+			continue
+		}
+		return len(sub)-len(t) == indent && strings.HasPrefix(t, "-") && strings.TrimRight(sub, " \t") != "---"
 	}
 	return false
 }

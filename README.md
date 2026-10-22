@@ -93,7 +93,8 @@ The viewer asks the presenter before it shows a talk that contains code (see "Fo
 
 Slidev reads the headmatter with a full YAML parser; the viewer does not try to match it. It looks at every
 line of every Markdown file, and a `theme:` or `addons:` line it can't read plainly as package names (an alias,
-a tag, a value that continues on the next line, a flow mapping, an escaped key) counts as code too. So a talk
+a tag, a value that continues on the next line, any key inside `{…}` or `[…]`, an explicit `? key`, an escaped
+key) counts as code too. File names are compared ignoring case, as Windows finds them. So a talk
 *about* Slidev that shows `theme: ./my-theme` in a code block is asked about as well.
 
 The answer is remembered per talk (its id) and version: a hash of every file in it except the slides file, which

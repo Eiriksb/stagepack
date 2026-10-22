@@ -40,7 +40,7 @@ func TestCodeReasons(t *testing.T) {
 		{"theme as Slidev reads paths", []string{"slides.md"}, "---\ntheme: themes/mine\naddons: ['@/addons/a', '@org/pkg', 'slidev-addon-x']\n---\n",
 			[]string{"theme themes/mine in slides.md (loaded from a folder)", "addon @/addons/a in slides.md (loaded from a folder)"}, nil},
 		{"addon by path in package.json", []string{"slides.md", "package.json"}, plain,
-			[]string{"addon ./addon (loaded from a folder, named in package.json)"},
+			[]string{"package.json (names addon ./addon, loaded from a folder)"},
 			map[string]string{"package.json": `{"slidev": {"addons": ["slidev-addon-x", "./addon", 3]}}`}},
 		{"package.json without paths", []string{"slides.md", "package.json"}, plain, nil,
 			map[string]string{"package.json": `{"slidev": {"addons": ["slidev-addon-x"]}, "devDependencies": {"@slidev/cli": "53"}}`}},
@@ -52,7 +52,7 @@ func TestCodeReasons(t *testing.T) {
 			[]string{`package.json ("postcss": configuration that runs as code)`},
 			map[string]string{"package.json": `{"postcss": {"plugins": {"./x": {}}}}`}},
 		{"package.json keys are exact, as in JavaScript", []string{"slides.md", "package.json"}, plain,
-			[]string{"addon ./x (loaded from a folder, named in package.json)"},
+			[]string{"package.json (names addon ./x, loaded from a folder)"},
 			map[string]string{"package.json": `{"slidev": {"addons": ["./x"]}, "SLIDEV": {"addons": []}}`}},
 		{"addons inline", []string{"slides.md"}, "---\naddons: [slidev-addon-qrcode, '../addon', '@org/addon']\n---\n", []string{"addon ../addon in slides.md (loaded from a folder)"}, nil},
 		{"addons block", []string{"slides.md"}, "---\naddons:\n  - slidev-addon-x\n  - /home/x/addon # local\ntitle: T\n---\n", []string{"addon /home/x/addon in slides.md (loaded from a folder)"}, nil},
@@ -104,6 +104,11 @@ func TestCodeReasonsFailClosedOnYAML(t *testing.T) {
 		"addons nested list":         "---\naddons:\n  - - ./x\n---\n",
 		"addons anchor":              "---\naddons: *list\n---\n",
 		"quote inside a list":        "---\naddons: ['a,./x']\n---\n",
+		"explicit key in a flow map": "---\n{? theme : ./x}\n---\n",
+		"explicit key after a comma": "---\n{a: b, ? addons: [./x]}\n---\n",
+		"flow value on the next line at column 0": "---\n{theme:\n./x}\n---\n",
+		"flow value going on at column 0":         "---\n{theme: seriph\n./x}\n---\n",
+		"theme as a list":                         "---\ntheme:\n- ./x\n---\n",
 	} {
 		read := func(string) []byte { return []byte(slides) }
 		if got := CodeReasons([]string{"slides.md"}, "slides.md", read); len(got) == 0 {
@@ -133,6 +138,35 @@ func TestCodeReasonsPlainHeadmatter(t *testing.T) {
 		read := func(string) []byte { return []byte(slides) }
 		if got := CodeReasons([]string{"slides.md"}, "slides.md", read); len(got) != 0 {
 			t.Errorf("%s: counted as code: %q", name, got)
+		}
+	}
+}
+
+// Windows opens Package.json when Node asks for package.json: names are compared folded.
+func TestCodeReasonsFoldsNames(t *testing.T) {
+	addon := []byte(`{"slidev": {"addons": ["/elsewhere"]}}`)
+	read := func(n string) []byte {
+		if strings.HasSuffix(strings.ToLower(n), ".json") {
+			return addon
+		}
+		return []byte("# hi\n")
+	}
+	for _, c := range []struct {
+		names []string
+		want  string
+	}{
+		{[]string{"slides.md", "Package.json"}, "Package.json (names addon /elsewhere, loaded from a folder)"},
+		{[]string{"slides.md", "Node_Modules/x/PACKAGE.JSON"}, "package x (bundled with the talk)"},
+		{[]string{"slides.md", "themes/mine/package.json"}, "themes/mine/package.json (names addon /elsewhere, loaded from a folder)"},
+		{[]string{"SETUP/main.json"}, "SETUP/main.json (setup code)"},
+		{[]string{"Vite.Config"}, "Vite.Config (configuration that runs as code)"},
+		{[]string{"pac\u212Aage.json"}, "pac\u212Aage.json (names addon /elsewhere, loaded from a folder)"}, // a Kelvin sign folds to k
+		{[]string{"unocſs.config"}, "unocſs.config (configuration that runs as code)"},
+		{[]string{"lib/x.MJS"}, "lib/x.MJS"},
+	} {
+		got := strings.Join(CodeReasons(c.names, "slides.md", read), "\n")
+		if got != c.want {
+			t.Errorf("%q: CodeReasons = %q, want %q", c.names, got, c.want)
 		}
 	}
 }

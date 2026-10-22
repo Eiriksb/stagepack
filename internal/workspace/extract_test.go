@@ -486,7 +486,7 @@ func TestExtractClassifiesCode(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{"vite.config.ts (configuration that runs as code)", "public/a.js", "package x (bundled with the talk)",
-		"package y (bundled with the talk)", "theme ./theme in slides.md (loaded from a folder)", "addon ./addon (loaded from a folder, named in package.json)"}
+		"package y (bundled with the talk)", "package.json (names addon ./addon, loaded from a folder)", "theme ./theme in slides.md (loaded from a folder)"}
 	if !w.HasCode() || !sameList(w.Code, want) {
 		t.Errorf("Code = %q, want %q", w.Code, want)
 	}
