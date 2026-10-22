@@ -71,6 +71,10 @@ func PathKey(absPath, goos string) string {
 	return strings.ToLower(strings.ReplaceAll(s, "/", `\`))
 }
 
+// Key is a short name for the deck at absPath, the same in every process: its
+// instance record is instances/<Key>.json.
+func Key(absPath string) string { return keyHash(absPath) }
+
 func keyHash(absPath string) string {
 	sum := sha256.Sum256([]byte(PathKey(absPath, runtime.GOOS)))
 	return hex.EncodeToString(sum[:])[:16]

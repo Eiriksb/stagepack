@@ -530,3 +530,24 @@ func TestDirPayloadShowsOnlyTheRuntime(t *testing.T) {
 		t.Error("payload found in an empty folder")
 	}
 }
+
+func TestInstallAndUninstallRefuseWhileATalkIsOpen(t *testing.T) {
+	old := openTalk
+	t.Cleanup(func() { openTalk = old })
+	openTalk = func(string) (string, bool) { return "/talks/a" + brand.Ext, true }
+	home := t.TempDir()
+	installedHome(t, home)
+	write(t, home, "node/node.exe", "n")
+	self := filepath.Join(t.TempDir(), "s")
+	write(t, filepath.Dir(self), "s", "x")
+	reg := &fakeRegistry{}
+	if err := install(home, payloadFS("2"), self, reg); err == nil || !strings.Contains(err.Error(), "a"+brand.Ext+" is open") {
+		t.Errorf("install: %v", err)
+	}
+	if _, err := uninstall(home, "", reg); err == nil || !strings.Contains(err.Error(), "is open") {
+		t.Errorf("uninstall: %v", err)
+	}
+	if got := read(t, home, "node/node.exe"); got != "n" || reg.written != nil || reg.deleted {
+		t.Errorf("something changed: node %q, registry %v %v", got, reg.written, reg.deleted)
+	}
+}

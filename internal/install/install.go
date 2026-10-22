@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"stagepack/internal/brand"
+	"stagepack/internal/instance"
 	"stagepack/internal/trust"
 )
 
@@ -118,10 +119,30 @@ func Install(home string, payload fs.FS) error {
 	return install(home, payload, self, platformRegistry)
 }
 
+// openTalk names a talk that is being shown from home, if there is one: an install or
+// uninstall must not change the runtime under it. Windows refuses that by itself (the
+// files are in use), Linux does not. Tests replace it.
+var openTalk = func(home string) (string, bool) {
+	for _, r := range instance.List(home) {
+		if instance.Alive(r) {
+			return r.DeckPath, true
+		}
+	}
+	return "", false
+}
+
+// errTalkOpen is the error for a talk being shown from home.
+func errTalkOpen(deck string) error {
+	return fmt.Errorf("%s is open: stop it first (tray icon, Stop)", filepath.Base(deck))
+}
+
 func install(home string, payload fs.FS, self string, reg assoc) error {
 	home, err := filepath.Abs(home) // the registry must not hold a relative path
 	if err != nil {
 		return err
+	}
+	if deck, open := openTalk(home); open {
+		return errTalkOpen(deck)
 	}
 	if err := os.MkdirAll(home, 0o755); err != nil {
 		return err
@@ -375,7 +396,7 @@ const (
 )
 
 // ownedEntries are the names in home that Install and the viewer create.
-var ownedEntries = []string{"node", "runtimes", "instances", "logs", trust.FileName}
+var ownedEntries = []string{"node", "runtimes", "instances", "logs", "browser", trust.FileName}
 
 // uninstall reports left when the running program (self) is in home and so
 // could not be deleted.
@@ -386,6 +407,9 @@ func uninstall(home, self string, reg assoc) (left bool, err error) {
 	}
 	if !IsInstalled(home) {
 		return false, fmt.Errorf("%w: %s", ErrNotInstalled, home)
+	}
+	if deck, open := openTalk(home); open {
+		return false, errTalkOpen(deck)
 	}
 	// Move node/ out of the way first: it cannot be moved while a talk runs, and then
 	// nothing has been changed, in the registry or on disk.

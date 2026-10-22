@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -36,12 +37,14 @@ type Options struct {
 	Home     string // the viewer's folder: node/, runtimes/, journal/, logs/, instances/
 	DeckPath string
 	UI       func(ui.Actions) ui.UI // default ui.NewTray
-	Browser  func(url string) error // default browser.Open
+	Browser  func(url string) error // default: an app window (browser.AppWindow), else browser.Open
 	GOOS     string                 // default runtime.GOOS
 	Env      func(string) string    // default os.Getenv
 	// TrustCode runs a talk's code without asking (for scripts and tests). It
 	// does not add the talk to the trusted list.
 	TrustCode bool
+	// DefaultBrowser opens the talk in the default browser, not in app windows.
+	DefaultBrowser bool
 }
 
 // ErrNotTrusted is returned when the person chose not to run a talk's code;
@@ -90,9 +93,10 @@ type session struct {
 	logPath string
 	ctx     context.Context // cancelled by stop: aborts a Slidev that is still starting
 	cancel  context.CancelFunc
-	started chan struct{} // closed when start has finished
-	once    sync.Once     // stop
-	opened  func()        // closes the "Opening" box; safe to call more than once
+	started chan struct{}      // closed when start has finished
+	once    sync.Once          // stop
+	opened  func()             // closes the "Opening" box; safe to call more than once
+	window  *browser.AppWindow // the talk's own browser windows, if they are used
 
 	opMu sync.Mutex // serialises Save a copy and stop
 
@@ -116,9 +120,6 @@ func Open(ctx context.Context, o Options) error {
 	if o.UI == nil {
 		o.UI = ui.NewTray
 	}
-	if o.Browser == nil {
-		o.Browser = browser.Open
-	}
 	if o.GOOS == "" {
 		o.GOOS = runtime.GOOS
 	}
@@ -133,14 +134,36 @@ func Open(ctx context.Context, o Options) error {
 	if err != nil {
 		return err
 	}
+	// The talk's own windows when a browser that can show them is installed; $BROWSER
+	// (tests, scripts) and DefaultBrowser keep the default browser.
+	var window *browser.AppWindow
+	if o.Browser == nil {
+		o.Browser = browser.Open
+		if exe, ok := browser.FindAppBrowser(o.GOOS, o.Env, exec.LookPath); ok && !o.DefaultBrowser && o.Env("BROWSER") == "" {
+			window = browser.NewAppWindow(exe, filepath.Join(home, "browser", instance.Key(deckPath)), o.GOOS)
+			o.Browser = window.Open
+		}
+	}
 	s := &session{
 		o: o, home: home, deckPath: deckPath, title: filepath.Base(deckPath),
 		rtDir:   filepath.Join(home, "runtimes", strconv.Itoa(slidevrt.Major())),
 		journal: save.Journal{Dir: filepath.Join(home, "journal")},
 		started: make(chan struct{}),
+		window:  window,
 	}
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	defer s.cancel()
+	if window != nil {
+		// Closing all the talk's windows stops it, as Stop does.
+		go func() {
+			select {
+			case <-window.Closed():
+				log.Printf("the windows of %s were closed: stopping it", deckPath)
+				s.stop()
+			case <-s.ctx.Done():
+			}
+		}()
+	}
 	s.ui = o.UI(ui.Actions{
 		OpenPresenter: func() { s.openURL("/presenter/") },
 		OpenAudience:  func() { s.openURL("/") },
@@ -495,6 +518,9 @@ func (s *session) stop() {
 		s.cancel()
 		if begun {
 			<-s.started
+		}
+		if s.window != nil {
+			s.window.Close()
 		}
 		s.mu.Lock()
 		srv, w, wstop, wdone := s.srv, s.watcher, s.watchStop, s.watchDone

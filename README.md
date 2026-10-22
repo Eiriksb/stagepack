@@ -25,13 +25,20 @@ same text is in `PRESENTER.txt`, which `make build-windows` puts next to the ins
    "Windows protected your PC", click **More info**, then **Run anyway**. The installer is not signed with
    a purchased certificate, so Windows doesn't know it yet.
 3. **Double-click the `.sptx` file.** The first start can take a moment; "Opening …" is shown meanwhile.
-   The presenter view then opens in your browser, with the speaker notes. To show the slides to the
+   The presenter view then opens in a window of its own, with the speaker notes. To show the slides to the
    audience, click the screen icon in the presenter view, or use the Stagepack tray icon (bottom right, next
    to the clock; it may be under the small arrow) and choose **Open audience view**. Drag that window to the
    projector.
 4. **Notes are saved into the file.** Edit the speaker notes as you like; they are written into the `.sptx`
    file. Hover over or click the tray icon to see "Notes saved".
-5. **To finish, use the tray icon and choose Stop.** The notes are saved one last time and the talk closes.
+5. **To finish, use the tray icon and choose Stop, or close the talk's windows.** The notes are saved one
+   last time and the talk closes.
+
+**The talk's windows** are app windows of Chrome, Edge, Chromium or Brave, whichever is installed (Edge
+always is on Windows): no tabs, no address bar, and a browser profile of their own, apart from yours. Stop
+closes them, and closing all of them stops the talk. Where none of those browsers is installed (or only as a
+snap, whose confinement keeps it out of the profile folder), the talk opens in your default browser instead,
+and only Stop ends it. `stagepack open --default-browser FILE` asks for the default browser.
 
 **Save a copy…** in the tray menu saves the talk, with your notes, under another name; notes you edit after
 that go into the copy. Use it when the tray says **Notes not saved in the file**: the `.sptx` file could not
@@ -62,7 +69,7 @@ There is no setup program: the Linux build (`make build-linux`, the folder `dist
    registers `.sptx` files as their own type, `application/x-stagepack`, opened by Stagepack, so the file
    manager no longer treats them as zip files.
 2. **Double-click the `.sptx` file**, as on Windows. "Opening …" is shown meanwhile, then the presenter view
-   opens in your default browser.
+   opens in its own window (see "The talk's windows" above).
 3. **The tray icon** (top right on Ubuntu) has the same menu as on Windows: the notes status, **Open
    presenter**, **Open audience view**, **Save a copy…** and **Stop**. Ubuntu shows tray icons out of the box;
    on other GNOME desktops turn on the AppIndicator extension. Where no tray is shown, a small window with the
@@ -192,6 +199,7 @@ journal/<key>.json                                note edits not yet in the .spt
 trusted.json                                      talks allowed to run their code: id and hash of that version
 logs/viewer.log                                   the viewer's log (viewer.log.1: the previous one)
 logs/<key>.log                                    Slidev's output for one talk
+browser/<hash>/                                   the browser profile of an open talk's windows (removed when they close)
 instances/<hash>.json, .lock                      one running talk: process, port, URL
 ```
 

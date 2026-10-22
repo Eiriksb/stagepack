@@ -123,7 +123,7 @@ func runPack(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-var openUsage = "usage: " + cmdName + " open [--headless] [--home DIR] [--trust-code] FILE"
+var openUsage = "usage: " + cmdName + " open [--headless] [--home DIR] [--trust-code] [--default-browser] FILE"
 
 // runOpen opens a deck and returns when it is stopped: 0 on a clean stop, 1 on
 // an error (already shown to the user).
@@ -131,11 +131,12 @@ func runOpen(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("open", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() { fmt.Fprintln(stderr, openUsage) }
-	var headless, trustCode bool
+	var headless, trustCode, defaultBrowser bool
 	var home string
 	fs.BoolVar(&headless, "headless", false, "no tray icon: status as JSON lines on stdout; stop with Ctrl-C or SIGTERM")
 	fs.BoolVar(&trustCode, "trust-code", false, "run the talk's own code without asking (only for talks you trust)")
 	fs.StringVar(&home, "home", "", "the viewer's folder (default: the folder of this program)")
+	fs.BoolVar(&defaultBrowser, "default-browser", false, "open the talk in the default browser, not in windows of its own")
 	var files []string
 	rest := args
 	for {
@@ -171,7 +172,7 @@ func runOpen(args []string, stdout, stderr io.Writer) int {
 	if headless {
 		newUI = func(a ui.Actions) ui.UI { return ui.NewHeadless(stdout, a) }
 	}
-	err := openDeck(context.Background(), app.Options{Home: home, DeckPath: files[0], UI: newUI, GOOS: goos, TrustCode: trustCode})
+	err := openDeck(context.Background(), app.Options{Home: home, DeckPath: files[0], UI: newUI, GOOS: goos, TrustCode: trustCode, DefaultBrowser: defaultBrowser})
 	if errors.Is(err, app.ErrNotTrusted) {
 		fmt.Fprintf(stderr, "%s: %v\n(where nobody can be asked, as with --headless, open a talk you trust with --trust-code)\n", brand.Name, err)
 		return 1

@@ -72,9 +72,13 @@ func TestOpenCommand(t *testing.T) {
 	if code := run([]string{"open", "--headless", "--home", "/h", "x" + brand.Ext}, &so, &se); code != 0 {
 		t.Fatalf("exit %d: %s", code, se.String())
 	}
-	if len(*got) != 1 || (*got)[0].Home != "/h" || (*got)[0].DeckPath != "x"+brand.Ext {
+	if len(*got) != 1 || (*got)[0].Home != "/h" || (*got)[0].DeckPath != "x"+brand.Ext || (*got)[0].DefaultBrowser {
 		t.Fatalf("Open got %+v", *got)
 	}
+	if code := run([]string{"open", "--headless", "--default-browser", "x" + brand.Ext}, &so, &se); code != 0 || !(*got)[1].DefaultBrowser {
+		t.Fatalf("--default-browser: exit %d, Open got %+v", code, (*got)[1])
+	}
+	*got = (*got)[:1]
 	// headless: the UI writes JSON lines to stdout
 	u := (*got)[0].UI(ui.Actions{})
 	u.Notify("t", "m")

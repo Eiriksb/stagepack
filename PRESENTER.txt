@@ -14,7 +14,8 @@ You have two files: Stagepack-Setup.exe and the talk, a file ending in .sptx.
 
 3. Double-click the .sptx file.
    The first start can take a moment; "Opening …" is shown meanwhile.
-   The presenter view then opens in your browser, with the speaker notes.
+   The presenter view then opens in a window of its own (Chrome or Edge, without tabs), with the speaker
+   notes.
    To show the slides to the audience, click the screen icon in the presenter view, or use the Stagepack
    icon in the tray (bottom right, next to the clock; it may be under the small arrow) and choose
    "Open audience view". Drag that window to the projector.
@@ -23,7 +24,7 @@ You have two files: Stagepack-Setup.exe and the talk, a file ending in .sptx.
    Edit the speaker notes as you like. They are written into the .sptx file itself. Hover over or click
    the Stagepack tray icon to see "Notes saved".
 
-5. To finish, use the tray icon and choose "Stop".
+5. To finish, use the tray icon and choose "Stop", or close the talk's windows.
    Stagepack saves the notes one last time and closes the talk.
 
 Save a copy…
