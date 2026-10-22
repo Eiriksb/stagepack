@@ -660,7 +660,7 @@ func TestPackNamesTheCode(t *testing.T) {
 	dir := copyDir(t, fixture)
 	write(t, filepath.Join(dir, "vite.config.ts"), "export default {}\n")
 	write(t, filepath.Join(dir, "components", "Counter.vue"), "<template>1</template>\n")
-	write(t, filepath.Join(dir, "public", "player.js"), "1\n")
+	write(t, filepath.Join(dir, "public", "fonts.css"), "a{}\n")
 	warn.Reset()
 	if _, _, err := packTo(t, Options{Dir: dir, Warn: &warn}); err != nil {
 		t.Fatal(err)
@@ -671,7 +671,7 @@ func TestPackNamesTheCode(t *testing.T) {
 			t.Errorf("warnings lack %q:\n%s", want, out)
 		}
 	}
-	if strings.Contains(out, "player.js") {
-		t.Errorf("public/player.js named as code:\n%s", out)
+	if strings.Contains(out, "fonts.css") {
+		t.Errorf("public/fonts.css named as code:\n%s", out)
 	}
 }

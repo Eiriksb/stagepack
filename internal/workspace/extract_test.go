@@ -485,8 +485,8 @@ func TestExtractClassifiesCode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"vite.config.ts (configuration that runs as code)", "package x (bundled with the talk)", "package y (bundled with the talk)",
-		"theme ./theme (loaded from a folder)", "addon ./addon (loaded from a folder, named in package.json)"}
+	want := []string{"vite.config.ts (configuration that runs as code)", "public/a.js", "package x (bundled with the talk)",
+		"package y (bundled with the talk)", "theme ./theme in slides.md (loaded from a folder)", "addon ./addon (loaded from a folder, named in package.json)"}
 	if !w.HasCode() || !sameList(w.Code, want) {
 		t.Errorf("Code = %q, want %q", w.Code, want)
 	}
@@ -511,10 +511,11 @@ func TestExtractHash(t *testing.T) {
 		t.Error("the order of the entries changed the hash")
 	}
 	for name, entries := range map[string][]entry{
-		"changed config": {slides, {name: "vite.config.ts", data: "export default { x: 1 }"}},
-		"renamed config": {slides, {name: "vite.config.mts", data: cfg.data}},
-		"added file":     {slides, cfg, {name: "public/a.png", data: "png"}},
-		"theme by path":  {{name: "slides.md", data: "---\ntheme: ./t\n---\n# hi"}, cfg},
+		"changed config":                      {slides, {name: "vite.config.ts", data: "export default { x: 1 }"}},
+		"renamed config":                      {slides, {name: "vite.config.mts", data: cfg.data}},
+		"added file":                          {slides, cfg, {name: "public/a.png", data: "png"}},
+		"theme by path":                       {{name: "slides.md", data: "---\ntheme: ./t\n---\n# hi"}, cfg},
+		"theme in a code block of the slides": {{name: "slides.md", data: "# hi\n```yaml\ntheme: ./t\n```\n"}, cfg},
 	} {
 		if hash(entries...) == base {
 			t.Errorf("%s: same hash", name)
