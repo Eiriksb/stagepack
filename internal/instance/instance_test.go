@@ -539,3 +539,37 @@ func TestList(t *testing.T) {
 		t.Errorf("List = %+v", got)
 	}
 }
+
+func TestInstanceRenew(t *testing.T) {
+	home := t.TempDir()
+	deck := filepath.Join(t.TempDir(), "a"+brand.Ext)
+	_, hA, err := Claim(home, deck, alwaysAlive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An old claim, as after a question that stayed up for a long time.
+	rec := mustRead(t, home, deck)
+	rec.StartedAt = time.Now().Add(-time.Hour)
+	if err := writeRecord(recordPath(home, deck), rec); err != nil {
+		t.Fatal(err)
+	}
+	if err := hA.Renew(); err != nil {
+		t.Fatal(err)
+	}
+	if got := mustRead(t, home, deck); time.Since(got.StartedAt) > time.Minute || got.Token != rec.Token {
+		t.Errorf("after Renew: %+v", got)
+	}
+	// B takes over: A's Renew must not touch B's record.
+	_, hB, err := Claim(home, deck, neverAlive)
+	if err != nil || hB == nil {
+		t.Fatalf("B: %v", err)
+	}
+	b := mustRead(t, home, deck)
+	if err := hA.Renew(); !errors.Is(err, ErrNotOwner) {
+		t.Fatalf("A's Renew after B took over = %v, want ErrNotOwner", err)
+	}
+	if got := mustRead(t, home, deck); got.Token != b.Token || !got.StartedAt.Equal(b.StartedAt) {
+		t.Errorf("A's Renew changed B's record: %+v", got)
+	}
+	hB.Release()
+}

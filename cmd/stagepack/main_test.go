@@ -93,6 +93,23 @@ func TestOpenCommand(t *testing.T) {
 		t.Errorf("default home: %+v", *got2)
 	}
 
+	if (*got)[0].TrustCode || (*got2)[0].TrustCode {
+		t.Error("TrustCode set without --trust-code")
+	}
+
+	// --trust-code; a talk not allowed to run its code says how to allow it
+	got3 := fakeOpen(t, app.ErrNotTrusted)
+	se.Reset()
+	if code := run([]string{"open", "--trust-code", "z" + brand.Ext}, &so, &se); code != 1 {
+		t.Errorf("not trusted: exit %d, want 1", code)
+	}
+	if len(*got3) != 1 || !(*got3)[0].TrustCode {
+		t.Errorf("--trust-code: %+v", *got3)
+	}
+	if !strings.Contains(se.String(), "--trust-code") {
+		t.Errorf("no hint about --trust-code: %q", se.String())
+	}
+
 	for _, args := range [][]string{{"open"}, {"open", "a", "b"}, {"open", "--nope", "a"}} {
 		if code := run(args, &so, &se); code != 2 {
 			t.Errorf("%v: exit %d, want 2", args, code)

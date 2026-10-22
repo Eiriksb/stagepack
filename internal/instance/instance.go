@@ -146,6 +146,25 @@ func (h *Handle) Update(port int, baseURL, workDir string) error {
 	return writeRecord(rp, cur)
 }
 
+// Renew starts the "still starting" time of a record without an address again, for an
+// instance that waited on the person (a question) before starting Slidev: while it waited, a
+// second launch may have judged it dead. Like Update, it returns ErrNotOwner, writing nothing,
+// when that second launch has taken the record over.
+func (h *Handle) Renew() error {
+	unlock, err := acquire(lockPath(h.home, h.absPath))
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	rp := recordPath(h.home, h.absPath)
+	cur, err := readRecord(rp)
+	if err != nil || !h.owned(cur) {
+		return ErrNotOwner
+	}
+	cur.StartedAt = time.Now()
+	return writeRecord(rp, cur)
+}
+
 // Release removes the record, but only while it still belongs to this claimant. It is safe to
 // call more than once.
 func (h *Handle) Release() {

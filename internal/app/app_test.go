@@ -115,10 +115,13 @@ type fakeUI struct {
 	errs     []string
 	notes    []string
 	savePath string
+	answer   bool     // what Confirm says
+	onAsk    func()   // run while Confirm is up
+	asked    []string // the questions Confirm was asked
 	ran      bool
 	quit     chan struct{}
 	quitOnce sync.Once
-	events   []string // "opening <name>", "opened", "error", "notify", in order
+	events   []string // "opening <name>", "opened", "error", "notify", "confirm", in order
 	busy     int      // Opening boxes shown and not closed yet
 }
 
@@ -205,6 +208,22 @@ func (f *fakeUI) checkOpening(t *testing.T, name string) {
 	if opened < 0 || closed < opened {
 		t.Errorf("events %q: want the Opening box shown and then closed", f.events)
 	}
+}
+
+func (f *fakeUI) Confirm(title, msg string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.busy > 0 {
+		f.events = append(f.events, "confirm with the Opening box up")
+	}
+	f.asked = append(f.asked, msg)
+	f.events = append(f.events, "confirm")
+	if f.onAsk != nil {
+		f.mu.Unlock()
+		f.onAsk()
+		f.mu.Lock()
+	}
+	return f.answer
 }
 
 func (f *fakeUI) AskSavePath(suggest string) (string, bool) {

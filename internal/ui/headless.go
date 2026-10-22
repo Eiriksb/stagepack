@@ -22,7 +22,8 @@ type headless struct {
 
 // NewHeadless returns a UI that writes one JSON line per call to w, such as
 // {"event":"status","status":"saved","title":"…"}. Its Run stops on Quit, or
-// on SIGINT or SIGTERM after calling a.Stop. AskSavePath accepts the suggestion.
+// on SIGINT or SIGTERM after calling a.Stop. AskSavePath accepts the suggestion;
+// Confirm answers no, as there is nobody to ask.
 func NewHeadless(w io.Writer, a Actions) UI {
 	return &headless{a: a, w: w, quit: make(chan struct{})}
 }
@@ -33,6 +34,7 @@ type line struct {
 	Title   string `json:"title,omitempty"`
 	Message string `json:"message,omitempty"`
 	Detail  string `json:"detail,omitempty"`
+	Answer  string `json:"answer,omitempty"`
 }
 
 func (h *headless) emit(l line) {
@@ -76,6 +78,12 @@ func (h *headless) Notify(title, msg string) {
 
 func (h *headless) Error(title, msg string) {
 	h.emit(line{Event: "error", Title: title, Message: msg})
+}
+
+// Confirm writes {"event":"confirm",…,"answer":"no"} and answers no.
+func (h *headless) Confirm(title, msg string) bool {
+	h.emit(line{Event: "confirm", Title: title, Message: msg, Answer: "no"})
+	return false
 }
 
 func (h *headless) AskSavePath(suggest string) (string, bool) { return suggest, true }

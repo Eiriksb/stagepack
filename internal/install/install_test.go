@@ -11,6 +11,7 @@ import (
 	"testing/fstest"
 
 	"stagepack/internal/brand"
+	"stagepack/internal/trust"
 )
 
 const (
@@ -257,6 +258,7 @@ func TestUninstallKeepsJournal(t *testing.T) {
 	write(t, home, "runtimes/53/package.json", "{}")
 	write(t, home, "logs/a.log", "l")
 	write(t, home, "instances/a.json", "{}")
+	write(t, home, trust.FileName, "{}")
 	write(t, home, ".install-old-1/node/node.exe", "left over")
 	reg := &fakeRegistry{}
 	if _, err := uninstall(home, "", reg); err != nil {
@@ -265,7 +267,7 @@ func TestUninstallKeepsJournal(t *testing.T) {
 	if got := read(t, home, "journal/x.json"); got != "notes" {
 		t.Errorf("journal = %q", got)
 	}
-	for _, rel := range []string{"node", "runtimes", "logs", "instances", ".install-old-1", ExeName(), markerName()} {
+	for _, rel := range []string{"node", "runtimes", "logs", "instances", trust.FileName, ".install-old-1", ExeName(), markerName()} {
 		if exists(home, rel) {
 			t.Errorf("%s survived the uninstall", rel)
 		}

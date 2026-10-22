@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"stagepack/internal/brand"
+	"stagepack/internal/trust"
 )
 
 // RegValue is one registry value. Name "" is the key's default value. A value
@@ -337,7 +338,7 @@ const (
 )
 
 // ownedEntries are the names in home that Install and the viewer create.
-var ownedEntries = []string{"node", "runtimes", "instances", "logs"}
+var ownedEntries = []string{"node", "runtimes", "instances", "logs", trust.FileName}
 
 // uninstall reports left when the running program (self) is in home and so
 // could not be deleted.

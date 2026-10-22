@@ -4,11 +4,14 @@ package workspace
 
 import (
 	"archive/zip"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"stagepack/internal/brand"
 	"stagepack/internal/deck"
@@ -22,7 +25,17 @@ type Work struct {
 	// Entries are the deck's entry names in zip order, the manifest left out.
 	// Rebuild packs exactly these back.
 	Entries []string
+	// Code says why opening the deck runs code it brought along
+	// (deck.CodeReasons); empty when it brings none.
+	Code []string
+	// Hash is a hex SHA-256 over the name and content of every entry but the
+	// manifest and the slides file (which note edits change), and over Code.
+	// The same talk with only its notes edited keeps its Hash.
+	Hash string
 }
+
+// HasCode reports whether opening the deck runs code it brought along.
+func (w Work) HasCode() bool { return len(w.Code) > 0 }
 
 const defaultEntry = "slides.md"
 
@@ -82,13 +95,32 @@ func Extract(deckPath, runtimeDir string) (Work, error) {
 	if err != nil {
 		return Work{}, err
 	}
+	var sums []string // "<name> <sha256>" of the entries Hash covers
 	for _, it := range items {
-		if err := write(dir, it); err != nil {
+		sum, err := write(dir, it)
+		if err != nil {
 			os.RemoveAll(dir)
 			return Work{}, err
 		}
+		if it.file.Name != m.Entry {
+			sums = append(sums, fmt.Sprintf("%q %x", it.file.Name, sum))
+		}
 	}
-	return Work{Dir: dir, Manifest: m, Entries: names}, nil
+	read := func(name string) []byte {
+		data, _ := os.ReadFile(filepath.Join(dir, filepath.FromSlash(deck.ExtractedPath(name))))
+		return data
+	}
+	w := Work{Dir: dir, Manifest: m, Entries: names, Code: deck.CodeReasons(names, m.Entry, read)}
+	sort.Strings(sums)
+	h := sha256.New()
+	for _, l := range sums {
+		fmt.Fprintln(h, l)
+	}
+	for _, r := range w.Code {
+		fmt.Fprintf(h, "code %q\n", r)
+	}
+	w.Hash = hex.EncodeToString(h.Sum(nil))
+	return w, nil
 }
 
 // plan validates every entry before anything is written, using the same
@@ -118,29 +150,31 @@ func plan(files []*zip.File) ([]item, error) {
 	return items, nil
 }
 
-// write streams one entry into dir.
-func write(dir string, it item) error {
+// write streams one entry into dir and returns the SHA-256 of what it wrote
+// (nil for a folder).
+func write(dir string, it item) ([]byte, error) {
 	dst := filepath.Join(dir, filepath.FromSlash(it.rel))
 	if it.dir {
-		return os.MkdirAll(dst, 0o755)
+		return nil, os.MkdirAll(dst, 0o755)
 	}
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return err
+		return nil, err
 	}
 	rc, err := it.file.Open()
 	if err != nil {
-		return fmt.Errorf("open %s: %w", it.file.Name, err)
+		return nil, fmt.Errorf("open %s: %w", it.file.Name, err)
 	}
 	defer rc.Close()
 	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if _, err := io.Copy(out, rc); err != nil {
+	h := sha256.New()
+	if _, err := io.Copy(io.MultiWriter(out, h), rc); err != nil {
 		out.Close()
-		return fmt.Errorf("extract %s: %w", it.file.Name, err)
+		return nil, fmt.Errorf("extract %s: %w", it.file.Name, err)
 	}
-	return out.Close()
+	return h.Sum(nil), out.Close()
 }
 
 // Remove deletes the work folder with everything in it, Slidev's own

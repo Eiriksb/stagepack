@@ -25,6 +25,7 @@ import (
 	"stagepack/internal/instance"
 	"stagepack/internal/save"
 	"stagepack/internal/slidev"
+	"stagepack/internal/trust"
 	"stagepack/internal/ui"
 	"stagepack/internal/workspace"
 	slidevrt "stagepack/runtime"
@@ -38,7 +39,17 @@ type Options struct {
 	Browser  func(url string) error // default browser.Open
 	GOOS     string                 // default runtime.GOOS
 	Env      func(string) string    // default os.Getenv
+	// TrustCode runs a talk's code without asking (for scripts and tests). It
+	// does not add the talk to the trusted list.
+	TrustCode bool
 }
+
+// ErrNotTrusted is returned when the person chose not to run a talk's code;
+// nothing was started.
+var ErrNotTrusted = errors.New("not opened: the talk contains code and was not allowed to run it")
+
+// maxReasonsShown is how many of the reasons a talk contains code are listed in the question.
+const maxReasonsShown = 8
 
 // server is the part of *slidev.Server the app uses; tests fake it.
 type server interface {
@@ -136,7 +147,7 @@ func Open(ctx context.Context, o Options) error {
 	// Unpacking and starting Slidev take a while: say so until the browser is open.
 	name := strings.TrimSuffix(filepath.Base(deckPath), filepath.Ext(deckPath))
 	s.opened = sync.OnceFunc(s.ui.Opening(name))
-	defer s.opened() // any return before the UI runs
+	defer func() { s.opened() }() // any return before the UI runs
 
 	// 1. Work folders left by a crash.
 	if err := workspace.CleanStale(s.rtDir, s.inUse()); err != nil {
@@ -174,6 +185,25 @@ func Open(ctx context.Context, o Options) error {
 	if m.Title != "" {
 		s.title = m.Title
 	}
+	// 3b. Code the talk brought along runs as this user once Slidev starts: ask
+	// first, once for each version of the talk.
+	if work.HasCode() {
+		if !s.allowCode(name) {
+			workspace.Remove(work)
+			h.Release()
+			return ErrNotTrusted
+		}
+		// The question may have been up for longer than a claim counts as starting, and
+		// another launch of the talk may have taken it over meanwhile: that one shows it.
+		if err := h.Renew(); errors.Is(err, instance.ErrNotOwner) {
+			workspace.Remove(work)
+			s.opened()
+			s.ui.Notify(brand.Name, name+" was opened again meanwhile, and is shown there.")
+			return nil
+		} else if err != nil {
+			log.Printf("renew the claim on %s: %v", deckPath, err)
+		}
+	}
 	s.key = save.JournalKey(m.ID, deckPath)
 	s.logPath = filepath.Join(home, "logs", s.key+".log")
 	// 4. Edits a crash left in the journal. An entry that can't be applied is
@@ -202,6 +232,64 @@ func Open(ctx context.Context, o Options) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.err
+}
+
+// allowCode reports whether the talk's code may run: it is in the trusted list
+// in this version, or the person says yes now (which adds it to the list).
+// name is the talk's file name, for the "Opening" box shown again after a yes.
+func (s *session) allowCode(name string) bool {
+	if s.o.TrustCode {
+		return true
+	}
+	w := s.work
+	store := trust.Store{Path: filepath.Join(s.home, trust.FileName)}
+	if store.Trusted(w.Manifest.ID, w.Hash) {
+		return true
+	}
+	s.opened()
+	if !s.ui.Confirm(brand.Name, codeQuestion(filepath.Base(s.deckPath), s.title, w.Code)) {
+		log.Printf("%s not opened: its code was not allowed to run", s.deckPath)
+		return false
+	}
+	if err := store.Remember(w.Manifest.ID, w.Hash, s.title); err != nil {
+		log.Printf("remember that %s may run its code: %v", s.deckPath, err)
+	}
+	s.opened = sync.OnceFunc(s.ui.Opening(name)) // starting still takes a while
+	return true
+}
+
+// codeQuestion is the text of the question asked before a talk's code runs.
+// The title and reasons come from the file, so they are shown on one line
+// each and cut short.
+func codeQuestion(file, title string, reasons []string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%q (%s) contains code. It runs on this computer, with access to your files, as soon as the talk is shown:\n\n",
+		oneLine(title, 80), oneLine(file, 80))
+	for i, r := range reasons {
+		if i == maxReasonsShown {
+			fmt.Fprintf(&b, "  • and %d more\n", len(reasons)-i)
+			break
+		}
+		b.WriteString("  • " + oneLine(r, 100) + "\n")
+	}
+	b.WriteString("\nOnly choose Yes if you trust the person who sent you this file.\n\n" +
+		"Yes: show the talk, and don't ask again for this version of it.\n" +
+		"No: close it without running anything.")
+	return b.String()
+}
+
+// oneLine is s with control characters as spaces, cut to max characters.
+func oneLine(s string, max int) string {
+	s = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || r == '\u2028' || r == '\u2029' {
+			return ' '
+		}
+		return r
+	}, s)
+	if utf8.RuneCountInString(s) > max {
+		s = string([]rune(s)[:max-1]) + "…"
+	}
+	return s
 }
 
 // openError is the dialog title and text for a deck that can't be unpacked.

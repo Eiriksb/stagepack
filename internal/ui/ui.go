@@ -27,6 +27,9 @@ type UI interface {
 	// may end right after.
 	Notify(title, msg string)
 	Error(title, msg string)
+	// Confirm asks a yes/no question and waits for the answer; true is yes. It
+	// is called before Run, and before anything has been started.
+	Confirm(title, msg string) bool
 	// AskSavePath asks where to save a copy of the deck, suggesting suggest.
 	AskSavePath(suggest string) (string, bool)
 	// Quit makes Run return. It is safe to call more than once, and before Run.

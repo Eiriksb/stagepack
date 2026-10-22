@@ -8,6 +8,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,7 +29,9 @@ import (
 	slidevrt "stagepack/runtime"
 )
 
-func TestE2ENotesTravel(t *testing.T) {
+// linuxBuild returns dist/linux and its runtime folder, or skips the test when they are missing.
+func linuxBuild(t *testing.T) (home, rt string) {
+	t.Helper()
 	if runtime.GOOS != "linux" {
 		t.Skip("the end-to-end test runs the Linux build in dist/linux")
 	}
@@ -36,7 +39,7 @@ func TestE2ENotesTravel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rt := filepath.Join(home, "runtimes", fmt.Sprint(slidevrt.Major()))
+	rt = filepath.Join(home, "runtimes", fmt.Sprint(slidevrt.Major()))
 	for _, p := range []string{
 		filepath.Join(home, "node", "bin", "node"),
 		filepath.Join(rt, "node_modules", "@slidev", "cli", "bin", "slidev.mjs"),
@@ -45,14 +48,36 @@ func TestE2ENotesTravel(t *testing.T) {
 			t.Skipf("%s is missing (build it with: make runtime node OS=linux): skipping", p)
 		}
 	}
-	workBefore := listDir(t, filepath.Join(rt, "work"))
+	return home, rt
+}
 
-	tmp := t.TempDir()
-	bin := filepath.Join(tmp, strings.ToLower(brand.Name))
+// buildViewer builds the viewer into dir and returns its path.
+func buildViewer(t *testing.T, dir string) string {
+	t.Helper()
+	bin := filepath.Join(dir, strings.ToLower(brand.Name))
 	build := exec.Command("go", "build", "-o", bin, "../cmd/stagepack")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
+	return bin
+}
+
+// browserScript writes a BROWSER program that appends its URL to urlFile, and returns its path.
+func browserScript(t *testing.T, dir, urlFile string) string {
+	t.Helper()
+	script := filepath.Join(dir, "browser.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nprintf '%s\\n' \"$1\" >> \""+urlFile+"\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return script
+}
+
+func TestE2ENotesTravel(t *testing.T) {
+	home, rt := linuxBuild(t)
+	workBefore := listDir(t, filepath.Join(rt, "work"))
+
+	tmp := t.TempDir()
+	bin := buildViewer(t, tmp)
 
 	// 1. Pack the fixture.
 	deckPath := filepath.Join(tmp, "talk"+brand.Ext)
@@ -64,10 +89,7 @@ func TestE2ENotesTravel(t *testing.T) {
 
 	// 2. Open it headless; BROWSER records the URL instead of opening one.
 	urlFile := filepath.Join(tmp, "url.txt")
-	script := filepath.Join(tmp, "browser.sh")
-	if err := os.WriteFile(script, []byte("#!/bin/sh\nprintf '%s\\n' \"$1\" >> \""+urlFile+"\"\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	script := browserScript(t, tmp, urlFile)
 	var stdout, stderr bytes.Buffer
 	cmd := exec.Command(bin, "open", "--headless", "--home", home, deckPath)
 	cmd.Env = append(os.Environ(), "BROWSER="+script)
@@ -183,6 +205,102 @@ func TestE2ENotesTravel(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(home, "journal", save.JournalKey(m.ID, deckPath)+".json")); !os.IsNotExist(err) {
 		t.Errorf("journal entry left after a clean stop (%v)", err)
+	}
+}
+
+// TestE2ECodeDeck: a talk whose vite.config.ts runs is not started where
+// nobody can be asked, and runs, config and all, with --trust-code.
+func TestE2ECodeDeck(t *testing.T) {
+	home, rt := linuxBuild(t)
+	workBefore := listDir(t, filepath.Join(rt, "work"))
+	tmp := t.TempDir()
+	bin := buildViewer(t, tmp)
+
+	src := filepath.Join(tmp, "src")
+	if err := os.CopyFS(src, os.DirFS(filepath.Join("..", "testdata", "deck"))); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(tmp, "config-ran")
+	config := fmt.Sprintf("import { writeFileSync } from 'node:fs'\nwriteFileSync(%q, 'ran')\nexport default {}\n", marker)
+	if err := os.WriteFile(filepath.Join(src, "vite.config.ts"), []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deckPath := filepath.Join(tmp, "code"+brand.Ext)
+	m, err := pack.Pack(pack.Options{Dir: src, Out: deckPath, Warn: io.Discard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Remove(filepath.Join(home, "logs", save.JournalKey(m.ID, deckPath)+".log")) })
+	urlFile := filepath.Join(tmp, "url.txt")
+	env := append(os.Environ(), "BROWSER="+browserScript(t, tmp, urlFile))
+
+	// 1. Headless, nobody to ask: not opened, nothing run, nothing left.
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command(bin, "open", "--headless", "--home", home, deckPath)
+	cmd.Env, cmd.Stdout, cmd.Stderr = env, &stdout, &stderr
+	err = cmd.Run()
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 1 {
+		t.Fatalf("open without --trust-code: %v, want exit 1\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"event":"confirm"`) || !strings.Contains(stdout.String(), "vite.config.ts") ||
+		!strings.Contains(stdout.String(), `"answer":"no"`) {
+		t.Errorf("no confirm line naming vite.config.ts:\n%s", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "--trust-code") {
+		t.Errorf("stderr does not mention --trust-code:\n%s", stderr.String())
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Errorf("the talk's vite.config.ts ran though it was not allowed (%v)", err)
+	}
+	if _, err := os.Stat(urlFile); !os.IsNotExist(err) {
+		t.Errorf("a browser was opened (%v)", err)
+	}
+	if left := newEntries(listDir(t, filepath.Join(rt, "work")), workBefore); len(left) != 0 {
+		t.Errorf("work folders left: %v", left)
+	}
+
+	// 2. With --trust-code it runs, its config included.
+	stdout.Reset()
+	stderr.Reset()
+	cmd = exec.Command(bin, "open", "--headless", "--trust-code", "--home", home, deckPath)
+	cmd.Env, cmd.Stdout, cmd.Stderr = env, &stdout, &stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	exited := make(chan error, 1)
+	go func() { exited <- cmd.Wait() }()
+	defer func() {
+		if cmd.ProcessState == nil {
+			cmd.Process.Signal(syscall.SIGTERM)
+			select {
+			case <-exited:
+			case <-time.After(30 * time.Second):
+				cmd.Process.Kill()
+			}
+		}
+		t.Logf("stdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
+	}()
+	waitFor(t, 3*time.Minute, "the browser URL", func() bool {
+		data, err := os.ReadFile(urlFile)
+		return err == nil && strings.TrimSpace(string(data)) != ""
+	})
+	if _, err := os.Stat(marker); err != nil {
+		t.Errorf("the talk's vite.config.ts did not run with --trust-code: %v", err)
+	}
+	if strings.Contains(stdout.String(), `"event":"confirm"`) {
+		t.Errorf("asked though --trust-code was given:\n%s", stdout.String())
+	}
+	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-exited:
+		if err != nil {
+			t.Fatalf("the viewer exited with %v", err)
+		}
+	case <-time.After(60 * time.Second):
+		t.Fatal("the viewer did not exit within 60 s of SIGTERM")
 	}
 }
 

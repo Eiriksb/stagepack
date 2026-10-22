@@ -113,7 +113,7 @@ func Pack(o Options) (deck.Manifest, error) {
 
 	title := o.Title
 	if title == "" {
-		title = headmatterValue(string(entryText), "title")
+		title = deck.HeadmatterValue(string(entryText), "title")
 	}
 	if title == "" {
 		title = filepath.Base(dir)
@@ -147,6 +147,24 @@ func Pack(o Options) (deck.Manifest, error) {
 	}
 	if _, _, err := deck.CheckEntryNames(names); err != nil {
 		return deck.Manifest{}, fmt.Errorf("pack: %w", err)
+	}
+	// The same rules the viewer uses to decide whether to ask before showing the talk.
+	byName := map[string]item{}
+	for _, it := range items {
+		byName[it.name] = it
+	}
+	read := func(name string) []byte {
+		it, ok := byName[name]
+		if !ok || it.src == "" {
+			return it.data
+		}
+		data, _ := os.ReadFile(it.src)
+		return data
+	}
+	if reasons := deck.CodeReasons(names, entry, read); len(reasons) > 0 {
+		fmt.Fprintf(warn, "note: this talk contains code, which runs on the presenter's computer, so the viewer "+
+			"asks before showing it (once for each version of the talk). It contains code because of:\n  %s\n",
+			strings.Join(reasons, "\n  "))
 	}
 
 	id, err := newID()
@@ -354,51 +372,6 @@ func newID() (string, error) {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:]), nil
 }
 
-// bom is the UTF-8 byte order mark some editors put at the start of a file.
-const bom = "\uFEFF"
-
-// isFence reports whether line is a --- fence (trailing spaces, tabs and \r allowed).
-func isFence(line string) bool { return strings.TrimRight(line, " \t\r") == "---" }
-
-// headmatter splits text into the lines of its first --- block (without the fences).
-// A leading byte order mark is ignored. ok is false if the text does not start with
-// a --- line or the block is not closed.
-func headmatter(text string) (lines []string, ok bool) {
-	all := strings.Split(strings.TrimPrefix(text, bom), "\n")
-	if !isFence(all[0]) {
-		return nil, false
-	}
-	for i := 1; i < len(all); i++ {
-		if isFence(all[i]) {
-			return all[1:i], true
-		}
-	}
-	return nil, false
-}
-
-// headmatterValue returns the value of a top-level `key: value` line in the first --- block.
-func headmatterValue(text, key string) string {
-	lines, ok := headmatter(text)
-	if !ok {
-		return ""
-	}
-	for _, l := range lines {
-		if v, found := keyValue(l, key); found {
-			return v
-		}
-	}
-	return ""
-}
-
-// keyValue returns the value of a `key: value` line, without quotes or a trailing # comment.
-func keyValue(line, key string) (string, bool) {
-	rest, ok := strings.CutPrefix(strings.TrimRight(line, "\r"), key+":")
-	if !ok {
-		return "", false
-	}
-	return plainValue(rest), true
-}
-
 // fontsOffline reports whether the headmatter sets fonts.provider to none, either as
 //
 //	fonts:
@@ -407,15 +380,15 @@ func keyValue(line, key string) (string, bool) {
 // or as `fonts: { provider: none }`. Slidev's default provider is Google Fonts, which the
 // browser loads from the internet when the talk is shown.
 func fontsOffline(text string) bool {
-	lines, _ := headmatter(text)
+	lines, _ := deck.Headmatter(text)
 	for i, l := range lines {
-		v, found := keyValue(l, "fonts")
+		v, found := deck.KeyValue(l, "fonts")
 		if !found {
 			continue
 		}
 		if strings.HasPrefix(v, "{") {
 			for _, part := range strings.Split(strings.Trim(v, "{} "), ",") {
-				if pv, ok := keyValue(strings.TrimSpace(part), "provider"); ok && pv == "none" {
+				if pv, ok := deck.KeyValue(strings.TrimSpace(part), "provider"); ok && pv == "none" {
 					return true
 				}
 			}
@@ -429,28 +402,13 @@ func fontsOffline(text string) bool {
 			if sub[0] != ' ' && sub[0] != '\t' {
 				break // the next top-level key
 			}
-			if pv, ok := keyValue(trimmed, "provider"); ok {
+			if pv, ok := deck.KeyValue(trimmed, "provider"); ok {
 				return pv == "none"
 			}
 		}
 		return false
 	}
 	return false
-}
-
-// plainValue is a YAML scalar without its quotes or a trailing # comment.
-func plainValue(v string) string {
-	v = strings.TrimSpace(v)
-	if v != "" && (v[0] == '"' || v[0] == '\'') {
-		if j := strings.IndexByte(v[1:], v[0]); j >= 0 {
-			return v[1 : 1+j]
-		}
-		return v
-	}
-	if i := strings.Index(v, " #"); i >= 0 {
-		v = v[:i]
-	}
-	return strings.TrimSpace(v)
 }
 
 // remoteURL reports whether a favicon value makes the browser fetch it from another host.
@@ -464,20 +422,20 @@ func remoteURL(v string) bool {
 // are kept.
 func withLocalFavicon(text string) (packed string, changed bool) {
 	mark := ""
-	if strings.HasPrefix(text, bom) {
-		mark, text = bom, strings.TrimPrefix(text, bom)
+	if strings.HasPrefix(text, deck.BOM) {
+		mark, text = deck.BOM, strings.TrimPrefix(text, deck.BOM)
 	}
 	nl := "\n"
 	if strings.Contains(text, "\r\n") {
 		nl = "\r\n"
 	}
 	line := "favicon: " + faviconURL
-	lines, ok := headmatter(text)
+	lines, ok := deck.Headmatter(text)
 	if !ok {
 		return mark + "---" + nl + line + nl + "---" + nl + text, true
 	}
 	for i, l := range lines {
-		v, found := keyValue(l, "favicon")
+		v, found := deck.KeyValue(l, "favicon")
 		if !found {
 			continue
 		}

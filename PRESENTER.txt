@@ -37,6 +37,14 @@ Save a copy…
 The talk runs on your own computer. It needs no internet connection, unless its author left its fonts to be
 loaded from the web; then the slides still work, with other fonts.
 
-Opening a talk runs the code that comes with it, as you. Only open .sptx files from people you trust.
+"… contains code"
+   Some talks come with code of their own (for example an interactive part of a slide). That code runs on
+   your computer, with access to your files, while the talk is shown. Before it starts such a talk,
+   Stagepack shows what the code is and asks whether to run it.
+   Choose Yes only if you trust the person who sent you the file. Stagepack then remembers your answer
+   for this version of the talk, so reopening it does not ask again (editing notes does not count as a
+   change). If the talk is changed later, you are asked again.
+   Choose No if you are unsure: the talk is closed and nothing is run. Ask its author about it.
+   Talks without code of their own open without this question.
 
 To remove Stagepack: Settings → Apps → Stagepack → Uninstall. Your .sptx files are not touched.

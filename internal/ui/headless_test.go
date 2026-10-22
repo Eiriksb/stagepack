@@ -29,6 +29,13 @@ func TestHeadlessLines(t *testing.T) {
 			t.Errorf("line %d = %s (%v), want event %s", i, lines[i], err, want)
 		}
 	}
+	buf.Reset()
+	if h.Confirm("T", "run it?") {
+		t.Error("headless Confirm said yes")
+	}
+	if got := strings.TrimSpace(buf.String()); got != `{"event":"confirm","title":"T","message":"run it?","answer":"no"}` {
+		t.Errorf("confirm line = %s", got)
+	}
 	if p, ok := h.AskSavePath("/x/y.deck"); !ok || p != "/x/y.deck" {
 		t.Errorf("AskSavePath = %q, %v", p, ok)
 	}

@@ -5,8 +5,10 @@ The viewer brings its own Node and a pinned Slidev, so the presenter needs nothi
 It works offline when the talk bundles its fonts (see "Fonts" below). The talk opens in Slidev's presenter
 view, and edits to the speaker notes are saved back into the `.sptx` file.
 
-Opening a `.sptx` file runs the talk's own code (its Vite config, `setup/` files, components and bundled
-packages) as you, like opening any Slidev project: only open talks from people you trust.
+A talk can carry its own code (a Vite config, `setup/` files, Vue components, bundled packages), and Slidev
+runs that code as you, like opening any Slidev project. So before it shows such a talk, the viewer asks, once
+for each version of the talk, like Office does for macros. Talks of only slides, styles, pictures and fonts
+open without asking.
 
 Status: the packer and the viewer work on Linux. The Windows installer is built and tested as far as
 cross-compiling and unit tests go, but see "Open items" below.
@@ -40,7 +42,12 @@ If you open the same file twice, the second launch brings up the running talk in
 The viewer talks only to `127.0.0.1`. The file is replaced atomically when notes are saved, so a crash leaves
 the old or the new file, never a broken one.
 
-Only open talks from people you trust: a talk can run code on your computer.
+**"… contains code"**: some talks come with code of their own (for example an interactive component), which
+runs on your computer, with access to your files, while the talk is shown. Before it starts such a talk,
+Stagepack lists what the code is and asks. Choose **Yes** only if you trust the person who sent you the file;
+it then remembers your answer for this version of the talk, so you aren't asked again when you reopen it
+(notes you edit don't count as a change). **No** closes it without running anything. If the talk is changed
+later, you are asked again. Talks without code never ask.
 
 To remove Stagepack: **Settings → Apps → Stagepack → Uninstall**. Your `.sptx` files are not touched.
 
@@ -68,6 +75,26 @@ the Inter and JetBrains Mono fonts), so a talk without extra dependencies is jus
 (`public/stagepack-favicon.svg`) is added so the viewer makes no network request. Your folder is never modified.
 
 `stagepack open talk.sptx` does what a double-click does.
+
+### Code in a talk
+
+The viewer asks the presenter before it shows a talk that contains code (see "For presenters"), and
+`stagepack pack` prints a note naming each thing that makes it so. These count:
+
+- `vite.config.*`, `uno.config.*`, `unocss.config.*`, `postcss.config.*` and `.postcssrc*` at the top;
+- anything under `setup/`;
+- any `.vue`, `.js`, `.mjs`, `.cjs`, `.ts`, `.mts`, `.cts`, `.jsx`, `.tsx`, `.node` or `.wasm` file outside
+  `public/` (Slidev serves `public/` as plain files);
+- a bundled package that holds such a file, or whose `package.json` names an addon by path (packages of only
+  CSS and fonts, like Fontsource, don't count);
+- a theme or addon given as a path (`./my-theme`, `themes/x`, `@/x`) instead of a package name: `theme:` or
+  `addons:` in the headmatter, or `"slidev": {"addons": [...]}` in `package.json`.
+
+The answer is remembered per talk (its id) and version: a hash of every file in it except the slides file, which
+note edits change. Any other change, repacking included, asks again. The list is `trusted.json` in the
+viewer's home. Where nobody can be asked (`stagepack open --headless`, and on Linux, where there is no tray),
+the answer is No; `stagepack open --trust-code FILE` runs a talk you trust without asking, and does not add it
+to the list.
 
 ### Fonts
 
@@ -122,6 +149,7 @@ runtimes/53/pnpm-workspace.yaml                   marks runtimes/53/ as Vite's w
 runtimes/53/node_modules/@slidev/cli/bin/slidev.mjs
 runtimes/53/work/<id>/                            one opened talk, unpacked
 journal/<key>.json                                note edits not yet in the .sptx file (kept by uninstall)
+trusted.json                                      talks allowed to run their code: id and hash of that version
 logs/viewer.log                                   the viewer's log (viewer.log.1: the previous one)
 logs/<key>.log                                    Slidev's output for one talk
 instances/<hash>.json, .lock                      one running talk: process, port, URL
@@ -142,7 +170,7 @@ Slidev writes its generated files to `work/<id>/node_modules/.slidev/`, so the w
 and gets a `node_modules/` even when the talk vendors nothing.
 
 The Go code is in `cmd/stagepack` (command line) and `internal/` (`brand` holds the product's names; `pack`,
-`deck`, `workspace`, `save`, `slidev`, `instance`, `ui`, `browser`, `app`).
+`deck`, `workspace`, `trust`, `save`, `slidev`, `instance`, `ui`, `browser`, `app`).
 
 ## Measured
 

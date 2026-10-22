@@ -126,6 +126,11 @@ func (t *tray) Error(title, msg string) {
 	messageBox(title, msg, windows.MB_ICONERROR)
 }
 
+// Confirm shows a warning with Yes and No, No the default, and returns when it is answered.
+func (t *tray) Confirm(title, msg string) bool {
+	return messageBoxButtons(title, msg, windows.MB_YESNO|windows.MB_ICONWARNING|windows.MB_DEFBUTTON2) == idYes
+}
+
 func (t *tray) AskSavePath(suggest string) (string, bool) {
 	p, ok, err := saveFileDialog("Save a copy", suggest, brand.Name+" talk", brand.Ext)
 	if err != nil {

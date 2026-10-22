@@ -647,3 +647,31 @@ func TestPackFaviconEmptyIsMissing(t *testing.T) {
 		}
 	}
 }
+
+func TestPackNamesTheCode(t *testing.T) {
+	var warn bytes.Buffer
+	if _, _, err := packTo(t, Options{Dir: fixture, Warn: &warn}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(warn.String(), "contains code") {
+		t.Errorf("the fixture (CSS-only package, no scripts) said it contains code: %q", warn.String())
+	}
+
+	dir := copyDir(t, fixture)
+	write(t, filepath.Join(dir, "vite.config.ts"), "export default {}\n")
+	write(t, filepath.Join(dir, "components", "Counter.vue"), "<template>1</template>\n")
+	write(t, filepath.Join(dir, "public", "player.js"), "1\n")
+	warn.Reset()
+	if _, _, err := packTo(t, Options{Dir: dir, Warn: &warn}); err != nil {
+		t.Fatal(err)
+	}
+	out := warn.String()
+	for _, want := range []string{"contains code", "\n  components/Counter.vue\n", "\n  vite.config.ts (configuration that runs as code)\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("warnings lack %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "player.js") {
+		t.Errorf("public/player.js named as code:\n%s", out)
+	}
+}

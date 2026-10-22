@@ -462,3 +462,62 @@ func TestRebuild(t *testing.T) {
 		t.Errorf("index.js = %q", got)
 	}
 }
+
+func TestExtractClassifiesCode(t *testing.T) {
+	deckPath := filepath.Join(t.TempDir(), "talk"+brand.Ext)
+	if _, err := pack.Pack(pack.Options{Dir: fixture, Out: deckPath, Warn: io.Discard}); err != nil {
+		t.Fatal(err)
+	}
+	w, err := Extract(deckPath, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w.HasCode() || w.Hash == "" {
+		t.Errorf("fixture: Code = %q, Hash = %q; want no code and a hash", w.Code, w.Hash)
+	}
+
+	p := writeDeck(t, "53.0.0", entry{name: "slides.md", data: "---\ntheme: ./theme\n---\n# hi"},
+		entry{name: "vite.config.ts", data: "export default {}"}, entry{name: "public/a.js", data: "x"},
+		entry{name: "vendor/node_modules/x/index.js", data: "x"},
+		entry{name: "vendor/node_modules/y/package.json", data: `{"slidev": {"addons": ["/elsewhere"]}}`},
+		entry{name: "package.json", data: `{"slidev": {"addons": ["./addon"]}}`})
+	w, err = Extract(p, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"vite.config.ts (configuration that runs as code)", "package x (bundled with the talk)", "package y (bundled with the talk)",
+		"theme ./theme (loaded from a folder)", "addon ./addon (loaded from a folder, named in package.json)"}
+	if !w.HasCode() || !sameList(w.Code, want) {
+		t.Errorf("Code = %q, want %q", w.Code, want)
+	}
+}
+
+func TestExtractHash(t *testing.T) {
+	hash := func(entries ...entry) string {
+		t.Helper()
+		w, err := Extract(writeDeck(t, "53.0.0", entries...), t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return w.Hash
+	}
+	slides := entry{name: "slides.md", data: "# hi"}
+	cfg := entry{name: "vite.config.ts", data: "export default {}"}
+	base := hash(slides, cfg)
+	if got := hash(entry{name: "slides.md", data: "# hi\n<!-- a note -->"}, cfg); got != base {
+		t.Error("editing the slides file changed the hash")
+	}
+	if got := hash(cfg, slides); got != base {
+		t.Error("the order of the entries changed the hash")
+	}
+	for name, entries := range map[string][]entry{
+		"changed config": {slides, {name: "vite.config.ts", data: "export default { x: 1 }"}},
+		"renamed config": {slides, {name: "vite.config.mts", data: cfg.data}},
+		"added file":     {slides, cfg, {name: "public/a.png", data: "png"}},
+		"theme by path":  {{name: "slides.md", data: "---\ntheme: ./t\n---\n# hi"}, cfg},
+	} {
+		if hash(entries...) == base {
+			t.Errorf("%s: same hash", name)
+		}
+	}
+}
