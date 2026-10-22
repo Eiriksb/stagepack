@@ -305,6 +305,73 @@ func TestE2ECodeDeck(t *testing.T) {
 	}
 }
 
+// A talk with `pwa: true` is asked about: Slidev would load vite-plugin-pwa, which the runtime lacks.
+// Headless, the answer is no, and the question names the option as Slidev's parser read it.
+func TestE2EPWADeck(t *testing.T) {
+	home, rt := linuxBuild(t)
+	workBefore := listDir(t, filepath.Join(rt, "work"))
+	tmp := t.TempDir()
+	bin := buildViewer(t, tmp)
+
+	src := filepath.Join(tmp, "src")
+	if err := os.CopyFS(src, os.DirFS(filepath.Join("..", "testdata", "deck"))); err != nil {
+		t.Fatal(err)
+	}
+	slides := filepath.Join(src, "slides.md")
+	data, err := os.ReadFile(slides)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withPWA := strings.Replace(string(data), "\ntitle: ", "\npwa: true\ntitle: ", 1)
+	if withPWA == string(data) {
+		t.Fatal("testdata/deck/slides.md has no title: line to put pwa: before")
+	}
+	if err := os.WriteFile(slides, []byte(withPWA), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var notes bytes.Buffer
+	deckPath := filepath.Join(tmp, "pwa"+brand.Ext)
+	m, err := pack.Pack(pack.Options{Dir: src, Out: deckPath, Warn: &notes})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(notes.String(), "the pwa option set in slides.md") {
+		t.Errorf("pack does not note the pwa option:\n%s", notes.String())
+	}
+	t.Cleanup(func() { os.Remove(filepath.Join(home, "logs", save.JournalKey(m.ID, deckPath)+".log")) })
+	urlFile := filepath.Join(tmp, "url.txt")
+
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command(bin, "open", "--headless", "--home", home, deckPath)
+	cmd.Env = append(os.Environ(), "BROWSER="+browserScript(t, tmp, urlFile))
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	exited := make(chan error, 1)
+	go func() { exited <- cmd.Wait() }()
+	select {
+	case err = <-exited:
+	case <-time.After(3 * time.Minute):
+		cmd.Process.Kill()
+		<-exited
+		t.Fatalf("open did not exit within 3 minutes\nstdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
+	}
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 1 {
+		t.Fatalf("open without --trust-code: %v, want exit 1\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"event":"confirm"`) || !strings.Contains(stdout.String(), "the pwa option true") {
+		t.Errorf("no confirm line naming the pwa option:\n%s", stdout.String())
+	}
+	if _, err := os.Stat(urlFile); !os.IsNotExist(err) {
+		t.Errorf("a browser was opened (%v)", err)
+	}
+	if left := workFoldersWith(t, rt, workBefore, "slides.md", withPWA); len(left) != 0 {
+		t.Errorf("work folders left: %v", left)
+	}
+}
+
 // A talk with `theme: default` that bundles its own @slidev/theme-default, of only a package.json and an
 // index.html, is asked about: Slidev finds the talk's copy before the runtime's and puts the script in its
 // index.html into the page. Pack never bundles a runtime package, so the entries are added to the zip after.

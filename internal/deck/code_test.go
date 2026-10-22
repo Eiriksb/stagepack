@@ -196,6 +196,16 @@ func TestSlidesReasonsNames(t *testing.T) {
 	if got := SlidesReasons("slides.md", "---\naddons:\n  - slidev-addon-qrcode\n---\n", true); len(got) != 1 || !strings.Contains(got[0], "addons set in slides.md") {
 		t.Errorf("addons: %q", got)
 	}
+	for _, slides := range []string{"---\npwa: true\n---\n", "---\nconfig:\n  pwa: dev\n---\n", "---\n\"pwa\": false\n---\n", "# hi\n\n---\npwa: false\n---\n"} {
+		if got := SlidesReasons("slides.md", slides, true); len(got) != 1 || !strings.Contains(got[0], "the pwa option set in slides.md") {
+			t.Errorf("%q: %q", slides, got)
+		}
+	}
+	for _, slides := range []string{"---\ntheme: default\npwa: false\n---\n", "---\npwa: false # off\ntitle: x\n---\n", "# A PWA: no\n"} {
+		if got := SlidesReasons("slides.md", slides, true); len(got) != 0 {
+			t.Errorf("%q: %q", slides, got)
+		}
+	}
 }
 
 func TestHeadmatterReasons(t *testing.T) {
@@ -227,7 +237,7 @@ func TestHeadmatterReasons(t *testing.T) {
 		{`"default"`, `"` + brand.AddonName + `"`, 1},
 		{`"default"`, `[["` + brand.AddonName + `"]]`, 1},
 	} {
-		if got := HeadmatterReasons(json.RawMessage(c.theme), json.RawMessage(c.addons)); len(got) != c.want {
+		if got := HeadmatterReasons(json.RawMessage(c.theme), json.RawMessage(c.addons), nil); len(got) != c.want {
 			t.Errorf("theme %s, addons %s: %q, want %d reasons", c.theme, c.addons, got, c.want)
 		}
 	}
@@ -237,15 +247,34 @@ func TestHeadmatterReasons(t *testing.T) {
 // reasons, however long they are.
 func TestHeadmatterReasonsKeepWholeValues(t *testing.T) {
 	long := `"` + strings.Repeat("slidev-addon-padding-", 10)
-	a := HeadmatterReasons(nil, json.RawMessage(`[`+long+`x"]`))
-	b := HeadmatterReasons(nil, json.RawMessage(`[`+long+`y"]`))
+	a := HeadmatterReasons(nil, json.RawMessage(`[`+long+`x"]`), nil)
+	b := HeadmatterReasons(nil, json.RawMessage(`[`+long+`y"]`), nil)
 	if strings.Join(a, "\n") == strings.Join(b, "\n") {
 		t.Errorf("two addon lists that differ only at the end give the same reasons: %q", a)
 	}
-	a = HeadmatterReasons(json.RawMessage(long+`x"`), nil)
-	b = HeadmatterReasons(json.RawMessage(long+`y"`), nil)
+	a = HeadmatterReasons(json.RawMessage(long+`x"`), nil, nil)
+	b = HeadmatterReasons(json.RawMessage(long+`y"`), nil, nil)
 	if strings.Join(a, "\n") == strings.Join(b, "\n") {
 		t.Errorf("two themes that differ only at the end give the same reasons: %q", a)
+	}
+	a = HeadmatterReasons(nil, nil, json.RawMessage(long+`x"`))
+	b = HeadmatterReasons(nil, nil, json.RawMessage(long+`y"`))
+	if strings.Join(a, "\n") == strings.Join(b, "\n") {
+		t.Errorf("two pwa values that differ only at the end give the same reasons: %q", a)
+	}
+}
+
+// Any pwa value Slidev could take as on makes it load vite-plugin-pwa, which
+// the runtime lacks, from the talk's folder or the presenter's own packages.
+func TestHeadmatterReasonsPWA(t *testing.T) {
+	for pwa, want := range map[string]int{
+		``: 0, `null`: 0, `false`: 0, ` false `: 0,
+		`true`: 1, `"dev"`: 1, `"build"`: 1, `"false"`: 1, `0`: 1, `{}`: 1, `[false]`: 1,
+	} {
+		got := HeadmatterReasons(json.RawMessage(`"default"`), json.RawMessage(`[]`), json.RawMessage(pwa))
+		if len(got) != want {
+			t.Errorf("pwa %s: %q, want %d reasons", pwa, got, want)
+		}
 	}
 }
 

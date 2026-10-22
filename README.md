@@ -191,6 +191,8 @@ The viewer asks the presenter before it shows a talk that contains code (see "Fo
   and fonts, like Fontsource, don't count);
 - any theme but the one the runtime bundles, and any addon but the export addon the runtime bundles
   (`stagepack`, `slidev-addon-stagepack`; see above);
+- the `pwa` option set to anything but `false`: Slidev then loads `vite-plugin-pwa`, which isn't in the runtime,
+  from the talk's folder or else from the presenter's own global packages;
 - a bundled package with `stagepack` in its name, whatever it holds: Slidev would find it instead of the
   runtime's export addon;
 - a bundled package, whatever it holds, with the name of a package the runtime has (`@slidev/theme-default`,
@@ -203,21 +205,21 @@ The viewer asks the presenter before it shows a talk that contains code (see "Fo
 - `"slidev": {"addons": [...]}` listing any other addon, or a `"postcss"` key, in any `package.json`, or a
   `package.json` that isn't valid JSON.
 
-Slidev reads the theme and addons from the headmatter with a full YAML parser, and YAML has many ways to write
-a key or carry a value over lines. So the viewer doesn't guess: before it asks, it runs Slidev's own parser
-(the runtime's `@slidev/parser`, with the bundled Node, on the unpacked slides file only) and judges what that
-returns. Nothing from the talk runs for this. The only theme that needs no question is the bundled one
+Slidev reads the theme, addons and `pwa` from the headmatter with a full YAML parser, and YAML has many ways to
+write a key or carry a value over lines. So the viewer doesn't guess: before it asks, it runs Slidev's own
+parser (the runtime's `@slidev/parser`, with the bundled Node, on the unpacked slides file only) and judges what
+that returns. Nothing from the talk runs for this. The only theme that needs no question is the bundled one
 (`default`, `none` or `@slidev/theme-default`), and the only addon is the bundled export addon. Any other theme
-and any other addon count, also those set under `config:`, and so does a headmatter that can't be read. A
-changed theme or addon list asks again.
+and any other addon count, and so does `pwa` unless it is `false`, also when set under `config:`, and so does a
+headmatter that can't be read. A changed theme, addon list or `pwa` value asks again.
 
-`stagepack pack` has no Node of its own, so its note uses a rougher check: it allows only `theme: default` on its
-own line in the `---` block at the top of the slides file, and names any other `theme:` or `addons:` line, in
-code blocks and slide text too. The viewer may not ask about all of those. File names are compared ignoring
-case, as Windows finds them.
+`stagepack pack` has no Node of its own, so its note uses a rougher check: it allows only `theme: default` on
+its own line in the `---` block at the top of the slides file (and `pwa: false` the same way), and names any
+other `theme:`, `addons:` or `pwa:` line, in code blocks and slide text too. The viewer may not ask about all of
+those. File names are compared ignoring case, as Windows finds them.
 
 The answer is remembered per talk (its id) and version: a hash of every file in it except the slides file, which
-note edits change, and of the reasons it contains code (so of its theme and addons). Any other change,
+note edits change, and of the reasons it contains code (so of its theme, addons and `pwa`). Any other change,
 repacking included, asks again. The list is `trusted.json` in the
 viewer's home. Where nobody can be asked (`stagepack open --headless`, and on Linux without `zenity` or
 `kdialog`), the answer is No; `stagepack open --trust-code FILE` runs a talk you trust without asking, and does not add it

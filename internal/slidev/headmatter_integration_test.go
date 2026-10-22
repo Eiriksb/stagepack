@@ -51,6 +51,10 @@ func TestReadHeadmatterIntegration(t *testing.T) {
 		{"the export addon by package name", "---\naddons: [slidev-addon-stagepack]\n---\n", false},
 		{"the export addon and another", "---\naddons: [stagepack, slidev-addon-x]\n---\n", true},
 		{"the export addon as a folder", "---\naddons: [./stagepack]\n---\n", true},
+		{"pwa", "---\ntheme: default\npwa: true\n---\n", true},
+		{"pwa in dev mode", "---\npwa: dev\n---\n", true},
+		{"pwa under config", "---\nconfig:\n  pwa: true\n---\n", true},
+		{"pwa off", "---\ntheme: default\npwa: false\n---\n", false},
 	} {
 		p := filepath.Join(t.TempDir(), "slides.md")
 		if err := os.WriteFile(p, []byte(c.slides), 0o644); err != nil {
@@ -60,9 +64,9 @@ func TestReadHeadmatterIntegration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", c.name, err)
 		}
-		reasons := deck.HeadmatterReasons(h.Theme, h.Addons)
+		reasons := deck.HeadmatterReasons(h.Theme, h.Addons, h.PWA)
 		if (len(reasons) > 0) != c.code {
-			t.Errorf("%s: theme %s, addons %s: reasons %q, want code=%v", c.name, h.Theme, h.Addons, reasons, c.code)
+			t.Errorf("%s: theme %s, addons %s, pwa %s: reasons %q, want code=%v", c.name, h.Theme, h.Addons, h.PWA, reasons, c.code)
 		}
 	}
 }

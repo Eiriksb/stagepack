@@ -257,14 +257,16 @@ func packageOf(name string) (string, bool) {
 	return segs[0], true
 }
 
-// HeadmatterReasons judges the theme and addons Slidev's parser read from the
-// slides' headmatter (JSON values; null or missing when not set). A theme that
-// isn't one the runtime bundles counts, and so does any addon but the export
-// addon the runtime bundles (bundledAddons): each other one comes from the
-// talk, a folder or a bundled package.
+// HeadmatterReasons judges the theme, addons and pwa option Slidev's parser
+// read from the slides' headmatter (JSON values; null or missing when not set).
+// A theme that isn't one the runtime bundles counts, and so does any addon but
+// the export addon the runtime bundles (bundledAddons): each other one comes
+// from the talk, a folder or a bundled package. So does any pwa value but
+// false: Slidev then imports vite-plugin-pwa, which the runtime lacks, from the
+// talk's folder or else from the presenter's own global packages.
 // Each reason holds its value in full, one per addon: the reasons go into the
 // version hash (workspace.Work.AddCode), so nothing may be cut from them here.
-func HeadmatterReasons(theme, addons json.RawMessage) []string {
+func HeadmatterReasons(theme, addons, pwa json.RawMessage) []string {
 	var out []string
 	var name string
 	switch {
@@ -285,6 +287,9 @@ func HeadmatterReasons(theme, addons json.RawMessage) []string {
 			}
 		}
 	}
+	if p := bytes.TrimSpace(pwa); !isNull(p) && string(p) != "false" {
+		out = append(out, "the pwa option "+string(p)+" (Slidev then loads vite-plugin-pwa, which isn't in the runtime)")
+	}
 	return out
 }
 
@@ -294,12 +299,14 @@ func isNull(v json.RawMessage) bool {
 }
 
 var (
-	// themeKey is theme or addons followed by a colon, as a key may be written:
-	// quoted or not, with blanks before the colon. Case matters, as in YAML.
-	themeKey = regexp.MustCompile(`(?:^|[^A-Za-z0-9_-])(theme|addons)["']?[ \t]*:`)
+	// themeKey is theme, addons or pwa followed by a colon, as a key may be
+	// written: quoted or not, with blanks before the colon. Case matters, as in YAML.
+	themeKey = regexp.MustCompile(`(?:^|[^A-Za-z0-9_-])(theme|addons|pwa)["']?[ \t]*:`)
 	// plainTheme is the one allowed form of a theme line; group 2 is the name.
 	// A # starts a comment only after a blank: `default#x` is all one value.
 	plainTheme = regexp.MustCompile(`^theme:[ \t]*(["']?)([A-Za-z0-9@/._-]+)(["']?)(?:[ \t]+#.*)?[ \t]*$`)
+	// plainPWA is the one allowed form of a pwa line: off.
+	plainPWA = regexp.MustCompile(`^pwa:[ \t]*false(?:[ \t]+#.*)?[ \t]*$`)
 	// plainAddons and bareAddons + addonItem are the allowed forms of an addons
 	// line, a list of one name: `addons: [name]`, or `addons:` and `  - name` on
 	// the next line. Group 2 is the name.
@@ -328,10 +335,11 @@ var (
 )
 
 // SlidesReasons is a rough check, for pack's note, of whether a Markdown file
-// sets a theme or addons that would count. The viewer does not use it: it asks
-// Slidev's parser (see HeadmatterReasons). Slidev reads the headmatter with a
-// full YAML parser, and YAML has many ways to spell a key or to carry a value
-// over lines; this check allows one plain form and counts everything else:
+// sets a theme, addons or the pwa option that would count. The viewer does not
+// use it: it asks Slidev's parser (see HeadmatterReasons). Slidev reads the
+// headmatter with a full YAML parser, and YAML has many ways to spell a key or
+// to carry a value over lines; this check allows one plain form and counts
+// everything else:
 //
 //   - The only theme a talk may set without being asked about is one the
 //     runtime bundles (or none), on a line of its own in the --- block at the
@@ -341,9 +349,11 @@ var (
 //     set the same way, in one of two forms: `addons: [stagepack]` on one line,
 //     or `addons:` and `  - stagepack` on the next. Every other addon comes from
 //     the talk (a folder, or a bundled package).
-//   - Any other line in any Markdown file that YAML could read as a theme: or
-//     addons: key counts, and so does any quoted key with an escape in it (which
-//     could spell "theme" without the letters) and any explicit "? key".
+//   - The pwa option may only be off, set the same way: `pwa: false`. On, it
+//     makes Slidev load vite-plugin-pwa, which the runtime lacks.
+//   - Any other line in any Markdown file that YAML could read as a theme:,
+//     addons: or pwa: key counts, and so does any quoted key with an escape in
+//     it (which could spell "theme" without the letters) and any explicit "? key".
 //
 // So a talk about Slidev that shows `theme: ./my-theme` in a code block, or
 // says "theme:" in its text, is noted too. isEntry is true for the slides file.
@@ -381,10 +391,15 @@ func SlidesReasons(name, text string, isEntry bool) []string {
 					break // addons:\n  - stagepack
 				}
 			}
-			key := themeKey.FindStringSubmatch(l)[1]
-			if key == "addons" {
+			if plain && plainPWA.MatchString(l) && newKeyFollows(lines[i+1:]) {
+				break // pwa: false
+			}
+			switch themeKey.FindStringSubmatch(l)[1] {
+			case "addons":
 				out = append(out, "addons set in "+name+" (addons can run code)")
-			} else {
+			case "pwa":
+				out = append(out, "the pwa option set in "+name+" (Slidev then loads vite-plugin-pwa, which isn't in the runtime)")
+			default:
 				out = append(out, "a theme set in "+name+" (any theme but the bundled \"default\" can run code)")
 			}
 		}

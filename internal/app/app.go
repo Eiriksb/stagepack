@@ -216,7 +216,7 @@ func Open(ctx context.Context, o Options) error {
 		log.Printf("check the headmatter of %s: %v", deckPath, err)
 		work.AddCode("the slides' headmatter (it couldn't be checked)")
 	} else {
-		work.AddCode(deck.HeadmatterReasons(hm.Theme, hm.Addons)...)
+		work.AddCode(deck.HeadmatterReasons(hm.Theme, hm.Addons, hm.PWA)...)
 	}
 	s.work = work
 	// 3b. Code the talk brought along runs as this user once Slidev starts: ask
