@@ -34,30 +34,25 @@ func TestCodeReasons(t *testing.T) {
 			"vendor/node_modules/@org/bar/dist/x.mjs", "vendor/node_modules/foo/node_modules/baz/index.js"}, plain, []string{
 			"package foo (bundled with the talk)", "package @org/bar (bundled with the talk)"}, nil},
 		{"node_modules straight in the zip", []string{"node_modules/evil/index.js"}, plain, []string{"package evil (bundled with the talk)"}, nil},
-		{"theme by path", []string{"slides.md"}, "---\ntheme: ./my-theme\n---\n", []string{"theme ./my-theme in slides.md (loaded from a folder)"}, nil},
-		{"theme by name", []string{"slides.md"}, "---\ntheme: seriph\n---\n", nil, nil},
-		{"theme absolute and drive", []string{"slides.md"}, "---\ntheme: 'C:\\themes\\x'\n---\n", []string{`theme 'C:\themes\x' in slides.md (loaded from a folder)`}, nil},
-		{"theme as Slidev reads paths", []string{"slides.md"}, "---\ntheme: themes/mine\naddons: ['@/addons/a', '@org/pkg', 'slidev-addon-x']\n---\n",
-			[]string{"theme themes/mine in slides.md (loaded from a folder)", "addon @/addons/a in slides.md (loaded from a folder)"}, nil},
-		{"addon by path in package.json", []string{"slides.md", "package.json"}, plain,
-			[]string{"package.json (names addon ./addon, loaded from a folder)"},
-			map[string]string{"package.json": `{"slidev": {"addons": ["slidev-addon-x", "./addon", 3]}}`}},
-		{"package.json without paths", []string{"slides.md", "package.json"}, plain, nil,
-			map[string]string{"package.json": `{"slidev": {"addons": ["slidev-addon-x"]}, "devDependencies": {"@slidev/cli": "53"}}`}},
-		{"bundled package naming an addon by path", []string{"vendor/node_modules/a/package.json", "vendor/node_modules/a/index.css"}, plain,
-			[]string{"package a (bundled with the talk)"},
-			map[string]string{"vendor/node_modules/a/package.json": `{"slidev": {"addons": ["../../../x"]}}`}},
-		{"broken package.json", []string{"slides.md", "package.json"}, plain, []string{"package.json (it can't be read, so its addons can't be checked)"}, map[string]string{"package.json": `{`}},
+		{"package.json listing addons", []string{"slides.md", "package.json"}, plain,
+			[]string{"package.json (it lists Slidev addons, which can run code)"},
+			map[string]string{"package.json": `{"slidev": {"addons": ["slidev-addon-x"]}}`}},
+		{"package.json keys are exact, as in JavaScript", []string{"slides.md", "package.json"}, plain,
+			[]string{"package.json (it lists Slidev addons, which can run code)"},
+			map[string]string{"package.json": `{"slidev": {"addons": ["x"]}, "SLIDEV": {"addons": []}}`}},
+		{"package.json without addons", []string{"slides.md", "package.json"}, plain, nil,
+			map[string]string{"package.json": `{"slidev": {"addons": []}, "devDependencies": {"@slidev/cli": "53"}}`}},
 		{"PostCSS config in package.json", []string{"slides.md", "package.json"}, plain,
 			[]string{`package.json ("postcss": configuration that runs as code)`},
 			map[string]string{"package.json": `{"postcss": {"plugins": {"./x": {}}}}`}},
-		{"package.json keys are exact, as in JavaScript", []string{"slides.md", "package.json"}, plain,
-			[]string{"package.json (names addon ./x, loaded from a folder)"},
-			map[string]string{"package.json": `{"slidev": {"addons": ["./x"]}, "SLIDEV": {"addons": []}}`}},
-		{"addons inline", []string{"slides.md"}, "---\naddons: [slidev-addon-qrcode, '../addon', '@org/addon']\n---\n", []string{"addon ../addon in slides.md (loaded from a folder)"}, nil},
-		{"addons block", []string{"slides.md"}, "---\naddons:\n  - slidev-addon-x\n  - /home/x/addon # local\ntitle: T\n---\n", []string{"addon /home/x/addon in slides.md (loaded from a folder)"}, nil},
-		{"addons block without indent", []string{"slides.md"}, "---\r\naddons:\r\n- ~/addon\r\n---\r\n", []string{"addon ~/addon in slides.md (loaded from a folder)"}, nil},
-		{"no headmatter", []string{"slides.md"}, "# theme: ./x\n", nil, nil},
+		{"bundled package listing addons", []string{"vendor/node_modules/a/package.json", "vendor/node_modules/a/index.css"}, plain,
+			[]string{"package a (bundled with the talk)"},
+			map[string]string{"vendor/node_modules/a/package.json": `{"slidev": {"addons": ["b"]}}`}},
+		{"a theme that is not bundled", []string{"slides.md"}, "---\ntheme: seriph\n---\n",
+			[]string{"a theme set in slides.md (any theme but the bundled \"default\" can run code)"}, nil},
+		{"addons by name", []string{"slides.md"}, "---\naddons:\n  - slidev-addon-qrcode\n---\n",
+			[]string{"addons set in slides.md (addons can run code)"}, nil},
+		{"broken package.json", []string{"slides.md", "package.json"}, plain, []string{"package.json (it can't be read, so its addons can't be checked)"}, map[string]string{"package.json": `{`}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -109,16 +104,28 @@ func TestCodeReasonsFailClosedOnYAML(t *testing.T) {
 		"flow value on the next line at column 0": "---\n{theme:\n./x}\n---\n",
 		"flow value going on at column 0":         "---\n{theme: seriph\n./x}\n---\n",
 		"theme as a list":                         "---\ntheme:\n- ./x\n---\n",
+		"default going on":                        "---\ntheme: default\n  ./x\n---\n",
+		"default going on after a blank line":     "---\ntheme: default\n\n  /x\n---\n",
+		"default going on after a comment":        "---\ntheme: default\n# c\n  /x\n---\n",
+		"default in a flow collection":            "---\nx: [\ntheme: default\n./x]\n---\n",
+		"default in a yaml code block":            "```yaml\ntheme: default\n```\n",
+		"default below the headmatter":            "---\ntitle: x\n---\n\ntheme: default\n",
+		"default without headmatter":              "theme: default\n",
+		"default unclosed headmatter":             "---\ntheme: default\n",
+		"default with mismatched quotes":          "---\ntheme: \"default'\n---\n",
+		"default as a later key":                  "---\ntheme: default\ntheme: ./x\n---\n",
+		"prose":                                   "---\ntitle: x\n---\n\nThe theme: dark.\n",
+		"empty theme":                             "---\ntheme:\n---\n",
 	} {
 		read := func(string) []byte { return []byte(slides) }
 		if got := CodeReasons([]string{"slides.md"}, "slides.md", read); len(got) == 0 {
 			t.Errorf("%s: not counted as code:\n%q", name, slides)
 		}
 	}
-	// Other Markdown files are looked at too.
+	// Other Markdown files are looked at too; the allowed form counts only in the slides file.
 	read := func(n string) []byte {
 		if n == "pages/more.md" {
-			return []byte("---\ntheme: ./x\n---\n")
+			return []byte("---\ntheme: default\n---\n")
 		}
 		return []byte("# hi\n")
 	}
@@ -129,11 +136,13 @@ func TestCodeReasonsFailClosedOnYAML(t *testing.T) {
 
 func TestCodeReasonsPlainHeadmatter(t *testing.T) {
 	for name, slides := range map[string]string{
-		"named theme and addons": "---\ntheme: seriph # the look\ntitle: My talk\naddons:\n  - slidev-addon-qrcode\n  - '@org/addon'\nfonts:\n  provider: none\n---\n# hi\n",
-		"quoted scoped theme":    "---\ntheme: \"@slidev/theme-default\"\naddons: [slidev-addon-x, \"@a/b\"]\n---\n",
-		"empty theme":            "---\ntheme:\ntitle: x\n---\n",
-		"prose":                  "---\ntitle: x\n---\n\nThe theme: dark, but readable.\n",
-		"CRLF":                   "---\r\ntheme: default\r\n---\r\n",
+		"no theme":             "---\ntitle: My talk\nfonts:\n  provider: none\n---\n# hi\n\nThe theme of this talk is plain.\n",
+		"bundled theme":        "---\ntheme: default # the look\ntitle: My talk\n---\n# hi\n",
+		"by package name":      "---\ntitle: x\ntheme: \"@slidev/theme-default\"\n---\n",
+		"none":                 "---\ntheme: 'none'\n---\n",
+		"CRLF":                 "---\r\ntheme: default\r\n---\r\n",
+		"last line of block":   "---\ntitle: x\ntheme: default\n---\n# hi\n",
+		"no headmatter at all": "# hi\n",
 	} {
 		read := func(string) []byte { return []byte(slides) }
 		if got := CodeReasons([]string{"slides.md"}, "slides.md", read); len(got) != 0 {
@@ -155,12 +164,12 @@ func TestCodeReasonsFoldsNames(t *testing.T) {
 		names []string
 		want  string
 	}{
-		{[]string{"slides.md", "Package.json"}, "Package.json (names addon /elsewhere, loaded from a folder)"},
+		{[]string{"slides.md", "Package.json"}, "Package.json (it lists Slidev addons, which can run code)"},
 		{[]string{"slides.md", "Node_Modules/x/PACKAGE.JSON"}, "package x (bundled with the talk)"},
-		{[]string{"slides.md", "themes/mine/package.json"}, "themes/mine/package.json (names addon /elsewhere, loaded from a folder)"},
+		{[]string{"slides.md", "themes/mine/package.json"}, "themes/mine/package.json (it lists Slidev addons, which can run code)"},
 		{[]string{"SETUP/main.json"}, "SETUP/main.json (setup code)"},
 		{[]string{"Vite.Config"}, "Vite.Config (configuration that runs as code)"},
-		{[]string{"pac\u212Aage.json"}, "pac\u212Aage.json (names addon /elsewhere, loaded from a folder)"}, // a Kelvin sign folds to k
+		{[]string{"pac\u212Aage.json"}, "pac\u212Aage.json (it lists Slidev addons, which can run code)"}, // a Kelvin sign folds to k
 		{[]string{"unocſs.config"}, "unocſs.config (configuration that runs as code)"},
 		{[]string{"lib/x.MJS"}, "lib/x.MJS"},
 	} {

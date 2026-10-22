@@ -81,21 +81,28 @@ the Inter and JetBrains Mono fonts), so a talk without extra dependencies is jus
 The viewer asks the presenter before it shows a talk that contains code (see "For presenters"), and
 `stagepack pack` prints a note naming each thing that makes it so. These count:
 
-- files named `vite.config*`, `uno.config*`, `unocss.config*`, `postcss.config*` or `.postcssrc*`, and a
-  `"postcss"` key in `package.json`;
+- files named `vite.config*`, `uno.config*`, `unocss.config*`, `postcss.config*` or `.postcssrc*`;
 - anything under `setup/`;
 - any `.vue`, `.js`, `.mjs`, `.cjs`, `.ts`, `.mts`, `.cts`, `.jsx`, `.tsx`, `.node` or `.wasm` file, also in
   `public/`;
-- a bundled package that holds such a file, or whose `package.json` names an addon by path (packages of only
-  CSS and fonts, like Fontsource, don't count);
-- a theme or addon given as a path (`./my-theme`, `themes/x`, `@/x`) instead of a package name: `theme:` or
-  `addons:` in the headmatter, or `"slidev": {"addons": [...]}` in `package.json`.
+- a bundled package that holds such a file, or whose `package.json` lists Slidev addons (packages of only CSS
+  and fonts, like Fontsource, don't count);
+- any theme but the one the runtime bundles, and any addons (the runtime bundles none);
+- `"slidev": {"addons": [...]}` or a `"postcss"` key in any `package.json`, or a `package.json` that isn't
+  valid JSON.
 
-Slidev reads the headmatter with a full YAML parser; the viewer does not try to match it. It looks at every
-line of every Markdown file, and a `theme:` or `addons:` line it can't read plainly as package names (an alias,
-a tag, a value that continues on the next line, any key inside `{…}` or `[…]`, an explicit `? key`, an escaped
-key) counts as code too. File names are compared ignoring case, as Windows finds them. So a talk
-*about* Slidev that shows `theme: ./my-theme` in a code block is asked about as well.
+Slidev reads the headmatter with a full YAML parser, and YAML has many ways to write a key or carry a value
+over lines. The viewer doesn't try to match that parser. It allows one plain form and counts everything else:
+
+- The only theme line that needs no question is the bundled theme on a line of its own in the `---` block at the
+  top of the slides file: `theme: default` (or `theme: none`, or `theme: "@slidev/theme-default"`). It must
+  not follow a `{` or `[`, and the next line must start a new key at the left edge.
+- Any other line in any Markdown file where `theme` or `addons` is followed by a colon counts, and so does any
+  quoted key with an escape in it and any `? key`.
+
+So a talk that uses another theme (bundle it and it still asks, since a theme has components), a talk *about*
+Slidev that shows `theme: ./my-theme` in a code block, and a slide that says "theme:" in its text are all asked
+about. File names are compared ignoring case, as Windows finds them.
 
 The answer is remembered per talk (its id) and version: a hash of every file in it except the slides file, which
 note edits change. Any other change, repacking included, asks again. The list is `trusted.json` in the
