@@ -1,14 +1,16 @@
 # Stagepack
 
-Stagepack packs a [Slidev](https://sli.dev) talk into one file, `talk.sptx`, that opens with a double-click.
+Stagepack packs a [Slidev](https://sli.dev) presentation into one file, `presentation.sptx`, that opens with a double-click.
 The viewer brings its own Node and a pinned Slidev, so the presenter needs nothing installed: no Node, no npm.
-It works offline when the talk bundles its fonts (see "Fonts" below). The talk opens in Slidev's presenter
+It works offline when the presentation bundles its fonts (see "Fonts" below). The presentation opens in Slidev's presenter
 view, and edits to the speaker notes are saved back into the `.sptx` file.
 
-A talk can carry its own code (a Vite config, `setup/` files, Vue components, bundled packages), and Slidev
-runs that code as you, like opening any Slidev project. So before it shows such a talk, the viewer asks, once
-for each version of the talk, like Office does for macros. Talks of only slides, styles, pictures and fonts
+A presentation can carry its own code (a Vite config, `setup/` files, Vue components, bundled packages), and Slidev
+runs that code as you, like opening any Slidev project. So before it shows such a presentation, the viewer asks, once
+for each version of the presentation, like Office does for macros. Presentations of only slides, styles, pictures and fonts
 open without asking.
+
+![A Slidev presentation shown from a .sptx file](assets/readme/slides.gif)
 
 Status: the packer, the viewer and the per-user install (file type, tray icon, dialogs) work on Linux
 (tested on Ubuntu with GNOME). The Windows installer is built and tested as far as cross-compiling and unit
@@ -63,16 +65,16 @@ tar -xJf stagepack-0.1.0-linux-x64.tar.xz
 stagepack-0.1.0-linux-x64/stagepack install
 ```
 
-The unpacked folder can be deleted afterwards. To update, install the new version the same way; a talk
+The unpacked folder can be deleted afterwards. To update, install the new version the same way; a presentation
 must not be open meanwhile. `~/.local/share/stagepack/stagepack version` prints the installed version. To
 remove it, see "On Linux" below.
 
 ## For presenters
 
-You get two files: `Stagepack-Setup.exe` (the same one for every talk) and the talk, a `.sptx` file. The
+You get two files: `Stagepack-Setup.exe` (the same one for every presentation) and the presentation, a `.sptx` file. The
 same text is in `PRESENTER.txt`, which `make build-windows` puts next to the installer.
 
-1. **Download both files first.** Don't open the talk from the email or from the Teams preview: save both
+1. **Download both files first.** Don't open the presentation from the email or from the Teams preview: save both
    files to a folder, then work from there.
 2. **Run `Stagepack-Setup.exe` once.** Double-click it and answer Yes; it needs no administrator rights. On
    "Windows protected your PC", click **More info**, then **Run anyway**. The installer is not signed with
@@ -84,31 +86,33 @@ same text is in `PRESENTER.txt`, which `make build-windows` puts next to the ins
    projector.
 4. **Notes are saved into the file.** Edit the speaker notes as you like; they are written into the `.sptx`
    file. Hover over or click the tray icon to see "Notes saved".
-5. **To finish, use the tray icon and choose Stop, or close the talk's windows.** The notes are saved one
-   last time and the talk closes.
+5. **To finish, use the tray icon and choose Stop, or close the presentation's windows.** The notes are saved one
+   last time and the presentation closes.
 
-**The talk's windows** are app windows of Chrome, Edge, Chromium or Brave, whichever is installed (Edge
+![The presenter view: stepping through slides and editing the speaker notes](assets/readme/presenter.gif)
+
+**The presentation's windows** are app windows of Chrome, Edge, Chromium or Brave, whichever is installed (Edge
 always is on Windows): no tabs, no address bar, and a browser profile of their own, apart from yours. Stop
-closes them, and closing all of them stops the talk. Where none of those browsers is installed (or only as a
-snap, whose confinement keeps it out of the profile folder), the talk opens in your default browser instead,
+closes them, and closing all of them stops the presentation. Where none of those browsers is installed (or only as a
+snap, whose confinement keeps it out of the profile folder), the presentation opens in your default browser instead,
 and only Stop ends it. `stagepack open --default-browser FILE` asks for the default browser.
 
-**Save a copy…** in the tray menu saves the talk, with your notes, under another name; notes you edit after
+**Save a copy…** in the tray menu saves the presentation, with your notes, under another name; notes you edit after
 that go into the copy. Use it when the tray says **Notes not saved in the file**: the `.sptx` file could not
 be written (it is read-only, or the USB stick was removed). Your notes are kept meanwhile, and Save a copy
-puts them in a new file. **Temporary copy** means the talk was opened from an email or a preview, so notes
+puts them in a new file. **Temporary copy** means the presentation was opened from an email or a preview, so notes
 would be lost with it: Save a copy keeps them.
 
-If you open the same file twice, the second launch brings up the running talk instead of starting another.
-The viewer talks only to `127.0.0.1`. The file is replaced atomically when notes are saved, so a crash leaves
+If you open the same file twice, the second launch brings up the running presentation instead of starting another.
+The viewer connects only to `127.0.0.1`. The file is replaced atomically when notes are saved, so a crash leaves
 the old or the new file, never a broken one.
 
-**"… contains code"**: some talks come with code of their own (for example an interactive component), which
-runs on your computer, with access to your files, while the talk is shown. Before it starts such a talk,
+**"… contains code"**: some presentations come with code of their own (for example an interactive component), which
+runs on your computer, with access to your files, while the presentation is shown. Before it starts such a presentation,
 Stagepack lists what the code is and asks. Choose **Yes** only if you trust the person who sent you the file;
-it then remembers your answer for this version of the talk, so you aren't asked again when you reopen it
-(notes you edit don't count as a change). **No** closes it without running anything. If the talk is changed
-later, you are asked again. Talks without code never ask.
+it then remembers your answer for this version of the presentation, so you aren't asked again when you reopen it
+(notes you edit don't count as a change). **No** closes it without running anything. If the presentation is changed
+later, you are asked again. Presentations without code never ask.
 
 To remove Stagepack: **Settings → Apps → Stagepack → Uninstall**. Your `.sptx` files are not touched.
 
@@ -123,25 +127,27 @@ script and the npm package (see "Install" above) do step 1 for you.
    registers `.sptx` files as their own type, `application/x-stagepack`, opened by Stagepack, so the file
    manager no longer treats them as zip files.
 2. **Double-click the `.sptx` file**, as on Windows. "Opening …" is shown meanwhile, then the presenter view
-   opens in its own window (see "The talk's windows" above).
+   opens in its own window (see "The presentation's windows" above).
 3. **The tray icon** (top right on Ubuntu) has the same menu as on Windows: the notes status, **Open
    presenter**, **Open audience view**, **Save a copy…** and **Stop**. Ubuntu shows tray icons out of the box;
    on other GNOME desktops turn on the AppIndicator extension. Where no tray is shown, a small window with the
-   same buttons stands in for it; closing that window stops the talk.
+   same buttons stands in for it; closing that window stops the presentation.
 4. **Dialogs** (errors, "Save a copy…", and the "… contains code" question) are shown with `zenity`, or
    `kdialog` on KDE. Without either, messages go to the log and to a desktop notification, and the code
-   question is answered No: such a talk does not open until zenity is installed.
+   question is answered No: such a presentation does not open until zenity is installed.
 5. **To remove it:** `~/.local/share/stagepack/stagepack uninstall`. It removes exactly what the install
    added (the folder, the MIME type, the desktop entry, the icons and the default-application entry) and, as on
-   Windows, keeps notes that are not yet in any talk. Your `.sptx` files are not touched.
+   Windows, keeps notes that are not yet in any presentation. Your `.sptx` files are not touched.
 
 ## For authors
 
 Make a normal Slidev project (a folder with `slides.md`), then:
 
 ```
-stagepack pack DIR -o talk.sptx
+stagepack pack DIR -o presentation.sptx
 ```
+
+![Packing a presentation: a few kilobytes, five files](assets/readme/pack.gif)
 
 Options:
 
@@ -149,22 +155,22 @@ Options:
 |---|---|
 | `-o OUT` | the `.sptx` file to write |
 | `--entry slides.md` | the slides file, relative to `DIR` |
-| `--title T` | talk title (default: the headmatter title, else the folder name) |
+| `--title T` | presentation title (default: the headmatter title, else the folder name) |
 | `--exclude PREFIX` | leave out a path prefix (whole path components), repeatable |
 | `--meta k=v` | free-form manifest metadata, repeatable |
 
 Packing leaves out of the file whatever the pinned runtime already provides (Slidev itself, its default theme,
-the Inter and JetBrains Mono fonts), so a talk without extra dependencies is just your slides and media. Other
-`node_modules` your talk needs are included. If the talk has no local favicon, a bundled one
+the Inter and JetBrains Mono fonts), so a presentation without extra dependencies is just your slides and media. Other
+`node_modules` your presentation needs are included. If the presentation has no local favicon, a bundled one
 (`public/stagepack-favicon.svg`) is added so the viewer makes no network request. Your folder is never modified.
 
-`stagepack open talk.sptx` does what a double-click does.
+`stagepack open presentation.sptx` does what a double-click does.
 
 ### Export from Slidev (the addon)
 
 [`slidev-addon-stagepack`](addon/) adds an **Export as .sptx** button (a box icon) to Slidev's nav bar, in play
 mode and in the presenter's toolbar. It is there only while you run `slidev` (the dev server). One click runs
-`stagepack pack` on the talk and the browser downloads the `.sptx` file; pack's notes (fonts, code) are shown
+`stagepack pack` on the presentation and the browser downloads the `.sptx` file; pack's notes (fonts, code) are shown
 next to the button. It packs with the installed Stagepack, so install that first (see "Install").
 
 ```bash
@@ -173,13 +179,13 @@ npm i -D slidev-addon-stagepack
 
 Then name it in the headmatter of `slides.md`, as `addons: [stagepack]` on one line, or `addons:` with
 `  - stagepack` on the next. The viewer's runtime bundles its own copy of the addon, where it does nothing, so a
-talk that names it opens there without the "contains code" question. That holds for exactly this addon
+presentation that names it opens there without the "contains code" question. That holds for exactly this addon
 (`stagepack` or `slidev-addon-stagepack`); any other addon still counts. `stagepack pack` never bundles your copy
 of it. Details are in [addon/README.md](addon/README.md).
 
-### Code in a talk
+### Code in a presentation
 
-The viewer asks the presenter before it shows a talk that contains code (see "For presenters"), and
+The viewer asks the presenter before it shows a presentation that contains code (see "For presenters"), and
 `stagepack pack` prints a note naming each thing that makes it so. These count:
 
 - files named `vite.config*`, `uno.config*`, `unocss.config*`, `postcss.config*` or `.postcssrc*`;
@@ -192,14 +198,14 @@ The viewer asks the presenter before it shows a talk that contains code (see "Fo
 - any theme but the one the runtime bundles, and any addon but the export addon the runtime bundles
   (`stagepack`, `slidev-addon-stagepack`; see above);
 - the `pwa` option set to anything but `false`: Slidev then loads `vite-plugin-pwa`, which isn't in the runtime,
-  from the talk's folder or else from the presenter's own global packages;
+  from the presentation's folder or else from the presenter's own global packages;
 - a bundled package with `stagepack` in its name, whatever it holds: Slidev would find it instead of the
   runtime's export addon;
 - a bundled package, whatever it holds, with the name of a package the runtime has (`@slidev/theme-default`,
   `@slidev/client`, `vue`, the runtime's fonts and the rest), or of one Slidev tries for the bundled theme
-  (`slidev-theme-default`, `default`), or of one Slidev or Vite loads from the talk's folder (`vite-plugin-pwa`,
+  (`slidev-theme-default`, `default`), or of one Slidev or Vite loads from the presentation's folder (`vite-plugin-pwa`,
   `playwright-chromium`, and the CSS preprocessors `sass-embedded`, `sass`, `sugarss`, `less`, `stylus`).
-  Slidev and Vite look in the talk's `node_modules` first, so the talk's copy would be used: a theme's
+  Slidev and Vite look in the presentation's `node_modules` first, so the presentation's copy would be used: a theme's
   `index.html`, scripts and all, goes into the page, and Node runs a package's entry file whatever its
   extension. `stagepack pack` never bundles a package the runtime has;
 - `"slidev": {"addons": [...]}` listing any other addon, or a `"postcss"` key, in any `package.json`, or a
@@ -208,7 +214,7 @@ The viewer asks the presenter before it shows a talk that contains code (see "Fo
 Slidev reads the theme, addons and `pwa` from the headmatter with a full YAML parser, and YAML has many ways to
 write a key or carry a value over lines. So the viewer doesn't guess: before it asks, it runs Slidev's own
 parser (the runtime's `@slidev/parser`, with the bundled Node, on the unpacked slides file only) and judges what
-that returns. Nothing from the talk runs for this. The only theme that needs no question is the bundled one
+that returns. Nothing from the presentation runs for this. The only theme that needs no question is the bundled one
 (`default`, `none` or `@slidev/theme-default`), and the only addon is the bundled export addon. Any other theme
 and any other addon count, and so does `pwa` unless it is `false`, also when set under `config:`, and so does a
 headmatter that can't be read. A changed theme, addon list or `pwa` value asks again.
@@ -218,21 +224,21 @@ its own line in the `---` block at the top of the slides file (and `pwa: false` 
 other `theme:`, `addons:` or `pwa:` line, in code blocks and slide text too. The viewer may not ask about all of
 those. File names are compared ignoring case, as Windows finds them.
 
-The answer is remembered per talk (its id) and version: a hash of every file in it except the slides file, which
+The answer is remembered per presentation (its id) and version: a hash of every file in it except the slides file, which
 note edits change, and of the reasons it contains code (so of its theme, addons and `pwa`). Any other change,
 repacking included, asks again. The list is `trusted.json` in the
 viewer's home. Where nobody can be asked (`stagepack open --headless`, and on Linux without `zenity` or
-`kdialog`), the answer is No; `stagepack open --trust-code FILE` runs a talk you trust without asking, and does not add it
+`kdialog`), the answer is No; `stagepack open --trust-code FILE` runs a presentation you trust without asking, and does not add it
 to the list.
 
 ### Fonts
 
-Slidev's default font provider is Google Fonts: the browser loads the talk's fonts from the internet when it
-is shown, so without a network the slides fall back to other fonts. To make a talk work offline, bundle its
+Slidev's default font provider is Google Fonts: the browser loads the presentation's fonts from the internet when it
+is shown, so without a network the slides fall back to other fonts. To make a presentation work offline, bundle its
 fonts:
 
 1. Install a [Fontsource](https://fontsource.org) package per font, for example
-   `npm i @fontsource-variable/roboto`, and import it in the talk's `style.css`:
+   `npm i @fontsource-variable/roboto`, and import it in the presentation's `style.css`:
    `@import '@fontsource-variable/roboto';`. Inter and JetBrains Mono (`@fontsource-variable/inter`,
    `@fontsource-variable/jetbrains-mono`) are in the viewer's runtime already: import them, no install needed.
 2. Set the provider to `none` in the headmatter of `slides.md`:
@@ -244,7 +250,7 @@ fonts:
      provider: none
    ```
 
-`stagepack pack` warns when the headmatter does not set `provider: none`; it does not change the talk.
+`stagepack pack` warns when the headmatter does not set `provider: none`; it does not change the presentation.
 
 ## Building from source
 
@@ -301,7 +307,7 @@ it is in the file's version info and in the Settings → Apps entry. Builds with
    `v0.1.0`, so publish it only after step 2.
 
 To use the Linux build on this machine: `make build-linux`, then `dist/linux/stagepack install` (see "On Linux"
-above). Run it again after a new build to update the installed copy; a talk must not be open meanwhile.
+above). Run it again after a new build to update the installed copy; a presentation must not be open meanwhile.
 
 ## Layout
 
@@ -315,13 +321,13 @@ runtimes/53/package.json, package-lock.json       the pinned runtime (runtime/)
 runtimes/53/pnpm-workspace.yaml                   marks runtimes/53/ as Vite's workspace root
 runtimes/53/node_modules/@slidev/cli/bin/slidev.mjs
 runtimes/53/node_modules/slidev-addon-stagepack/  the export addon (addon/, copied in by build/addon.sh), inert here
-runtimes/53/work/<id>/                            one opened talk, unpacked
+runtimes/53/work/<id>/                            one opened presentation, unpacked
 journal/<key>.json                                note edits not yet in the .sptx file (kept by uninstall)
-trusted.json                                      talks allowed to run their code: id and hash of that version
+trusted.json                                      presentations allowed to run their code: id and hash of that version
 logs/viewer.log                                   the viewer's log (viewer.log.1: the previous one)
-logs/<key>.log                                    Slidev's output for one talk
-browser/<hash>/                                   the browser profile of an open talk's windows (removed when they close)
-instances/<hash>.json, .lock                      one running talk: process, port, URL
+logs/<key>.log                                    Slidev's output for one presentation
+browser/<hash>/                                   the browser profile of an open presentation's windows (removed when they close)
+instances/<hash>.json, .lock                      one running presentation: process, port, URL
 ```
 
 On Linux the install also writes, below `~/.local/share` (`$XDG_DATA_HOME`), and nothing else:
@@ -336,25 +342,25 @@ and runs `update-mime-database`, `update-desktop-database` and `xdg-mime default
 application/x-stagepack` (which writes `~/.config/mimeapps.list`). The names come from `internal/brand`.
 
 A `.sptx` file is a zip. At its root is `stagepack.json`, the manifest (format version, id, title, created and
-updated times, Slidev version, entry file, metadata), next to the talk's own files (`slides.md`, `public/`, ...).
+updated times, Slidev version, entry file, metadata), next to the presentation's own files (`slides.md`, `public/`, ...).
 
-A talk is unpacked to `runtimes/53/work/<id>/` and Slidev is started there
+A presentation is unpacked to `runtimes/53/work/<id>/` and Slidev is started there
 (`node runtimes/53/node_modules/@slidev/cli/bin/slidev.mjs ./slides.md --port N --open false`). Slidev, the
 theme and the fonts resolve by Node's normal parent lookup to `runtimes/53/node_modules`; no symlink, junction
 or generated `vite.config.ts` is needed. Because `runtimes/53/` has `pnpm-workspace.yaml`, Vite's
 `server.fs.allow` covers the whole of `runtimes/53/`, so the font files are served (200, not 403). A
-`node_modules` symlink in the talk folder pointing outside it does **not** work: Vite answers the font woff2
+`node_modules` symlink in the presentation folder pointing outside it does **not** work: Vite answers the font woff2
 files with 403 because they are outside `server.fs.allow`.
 
 Slidev writes its generated files to `work/<id>/node_modules/.slidev/`, so the work folder must be writable
-and gets a `node_modules/` even when the talk vendors nothing.
+and gets a `node_modules/` even when the presentation vendors nothing.
 
 The Go code is in `cmd/stagepack` (command line) and `internal/` (`brand` holds the product's names; `pack`,
 `deck`, `workspace`, `trust`, `save`, `slidev`, `instance`, `ui`, `browser`, `app`).
 
 ## Measured
 
-On Linux, a recent laptop, warm disk cache, a talk with a few hundred MB of video:
+On Linux, a recent laptop, warm disk cache, a presentation with a few hundred MB of video:
 
 | what | time |
 |---|---|
