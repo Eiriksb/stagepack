@@ -194,8 +194,8 @@ func TestE2ENotesTravel(t *testing.T) {
 	if left := procsIn(workDir); len(left) != 0 {
 		t.Errorf("processes left in the work folder: %v", left)
 	}
-	if left := newEntries(listDir(t, filepath.Join(rt, "work")), workBefore); len(left) != 0 {
-		t.Errorf("work folders left: %v", left)
+	if _, err := os.Stat(workDir); !os.IsNotExist(err) {
+		t.Errorf("work folder left: %s (%v)", workDir, err)
 	}
 	recs, _ := filepath.Glob(filepath.Join(home, "instances", "*.json"))
 	for _, r := range recs {
@@ -257,7 +257,7 @@ func TestE2ECodeDeck(t *testing.T) {
 	if _, err := os.Stat(urlFile); !os.IsNotExist(err) {
 		t.Errorf("a browser was opened (%v)", err)
 	}
-	if left := newEntries(listDir(t, filepath.Join(rt, "work")), workBefore); len(left) != 0 {
+	if left := workFoldersWith(t, rt, workBefore, "vite.config.ts", config); len(left) != 0 {
 		t.Errorf("work folders left: %v", left)
 	}
 
@@ -425,11 +425,8 @@ wait:
 	if _, err := os.Stat(urlFile); !os.IsNotExist(err) {
 		t.Errorf("a browser was opened (%v)", err)
 	}
-	// Only this deck's folders: internal/slidev's tests may be using the work folder at the same time.
-	for _, d := range newEntries(listDir(t, filepath.Join(rt, "work")), workBefore) {
-		if data, err := os.ReadFile(filepath.Join(rt, "work", d, filepath.FromSlash(file))); err == nil && string(data) == injectedHTML {
-			t.Errorf("work folder left: %s", d)
-		}
+	if left := workFoldersWith(t, rt, workBefore, file, injectedHTML); len(left) != 0 {
+		t.Errorf("work folders left: %v", left)
 	}
 
 	// 2. With --trust-code it opens, and the page holds the talk's script: the reason to ask was real.
@@ -632,6 +629,20 @@ func listDir(t *testing.T, dir string) []string {
 		names = append(names, e.Name())
 	}
 	return names
+}
+
+// workFoldersWith lists the folders made in rt/work since before that hold file (slash-separated) with
+// exactly content: a test's own. Other packages' tests (internal/slidev's) may be using rt/work at the
+// same time, so a test can't count every new folder as its own.
+func workFoldersWith(t *testing.T, rt string, before []string, file, content string) []string {
+	t.Helper()
+	var own []string
+	for _, d := range newEntries(listDir(t, filepath.Join(rt, "work")), before) {
+		if data, err := os.ReadFile(filepath.Join(rt, "work", d, filepath.FromSlash(file))); err == nil && string(data) == content {
+			own = append(own, d)
+		}
+	}
+	return own
 }
 
 func newEntries(now, before []string) []string {
