@@ -1,0 +1,25 @@
+{
+  "name": "stagepack",
+  "version": "0.0.0-dev",
+  "description": "Pack a Slidev talk into one .sptx file that opens with a double-click, offline. This package installs the Stagepack viewer for the current user.",
+  "keywords": ["slidev", "slides", "presentation", "offline", "sptx"],
+  "homepage": "https://github.com/Eiriksb/stagepack#readme",
+  "bugs": "https://github.com/Eiriksb/stagepack/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Eiriksb/stagepack.git"
+  },
+  "license": "MIT",
+  "bin": {
+    "stagepack": "bin/stagepack.js"
+  },
+  "files": [
+    "bin/",
+    "SHA256SUMS"
+  ],
+  "os": ["linux", "win32"],
+  "cpu": ["x64"],
+  "engines": {
+    "node": ">=18"
+  }
+}

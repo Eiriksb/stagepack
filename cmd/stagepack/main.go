@@ -16,11 +16,12 @@ import (
 	"stagepack/internal/brand"
 	"stagepack/internal/pack"
 	"stagepack/internal/ui"
+	"stagepack/internal/version"
 )
 
 var cmdName = strings.ToLower(brand.Name)
 
-var usage = "usage: " + cmdName + " {pack|open|install|uninstall} [args]"
+var usage = "usage: " + cmdName + " {pack|open|install|uninstall|version} [args]"
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -50,6 +51,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runPack(args[1:], stdout, stderr)
 	case "open":
 		return runOpen(args[1:], stdout, stderr)
+	case "version", "--version":
+		fmt.Fprintln(stdout, version.Version)
+		return 0
 	case "install", "uninstall":
 		if goos != "windows" && goos != "linux" {
 			fmt.Fprintf(stderr, "%s: %s is for Windows and Linux only\n", brand.Name, args[0])

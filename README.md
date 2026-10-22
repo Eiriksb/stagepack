@@ -14,6 +14,59 @@ Status: the packer, the viewer and the per-user install (file type, tray icon, d
 (tested on Ubuntu with GNOME). The Windows installer is built and tested as far as cross-compiling and unit
 tests go, but see "Open items" below.
 
+## Install
+
+Every channel installs the same build for the current user only, with no administrator rights or sudo,
+and registers `.sptx` files so they open with a double-click. Releases are at
+[github.com/Eiriksb/stagepack/releases](https://github.com/Eiriksb/stagepack/releases).
+
+**Windows:** download `Stagepack-Setup.exe` from the latest release and run it (see "For presenters" below,
+also about the "Windows protected your PC" warning).
+
+**Linux (x86_64), one line:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Eiriksb/stagepack/main/install.sh | sh
+```
+
+[`install.sh`](install.sh) downloads `stagepack-<version>-linux-x64.tar.xz` (about 120 MB) from the latest
+release and checks it against the release's `SHA256SUMS`. It unpacks it under `~/.cache` and runs
+`stagepack install --yes` from there, which copies it to `~/.local/share/stagepack`. It needs `tar`, `xz`,
+`sha256sum` and `curl` or `wget`. `STAGEPACK_VERSION=0.1.0` picks a given release. Arguments go on to
+`stagepack install`: `curl … | sh -s -- --home DIR`. The checksum guards against a broken download. It comes
+from the same place as the tarball, so it doesn't replace trusting GitHub; to check by hand, use the
+tarball below.
+
+**npm (Linux x86_64 or Windows x64):**
+
+```bash
+npx stagepack install
+```
+
+or `npm install -g stagepack`, then `stagepack install`. The npm package is a small launcher, not the 800 MB
+viewer. `stagepack install` downloads the release of the same version for your platform and checks it against
+the SHA-256 checksums published inside the npm package. Then it runs that build's own installer: the Linux
+tarball's `stagepack install`, or `Stagepack-Setup.exe`. Afterwards `stagepack open|pack|uninstall` run the
+installed viewer. Uninstalling the npm package leaves the viewer in place: run `stagepack uninstall` first.
+
+**By hand (Linux):** download the tarball and `SHA256SUMS` from the release, then:
+
+```bash
+sha256sum --ignore-missing -c SHA256SUMS
+```
+
+```bash
+tar -xJf stagepack-0.1.0-linux-x64.tar.xz
+```
+
+```bash
+stagepack-0.1.0-linux-x64/stagepack install
+```
+
+The unpacked folder can be deleted afterwards. To update, install the new version the same way; a talk
+must not be open meanwhile. `~/.local/share/stagepack/stagepack version` prints the installed version. To
+remove it, see "On Linux" below.
+
 ## For presenters
 
 You get two files: `Stagepack-Setup.exe` (the same one for every talk) and the talk, a `.sptx` file. The
@@ -61,10 +114,11 @@ To remove Stagepack: **Settings → Apps → Stagepack → Uninstall**. Your `.s
 
 ### On Linux
 
-There is no setup program: the Linux build (`make build-linux`, the folder `dist/linux` with `stagepack`,
-`node/` and `runtimes/` in it) installs itself for the current user, without sudo.
+There is no setup program: the Linux build (the release tarball, or `make build-linux`: a folder with
+`stagepack`, `node/` and `runtimes/` in it) installs itself for the current user, without sudo. The install
+script and the npm package (see "Install" above) do step 1 for you.
 
-1. **Install once:** run `dist/linux/stagepack install` in a terminal (`--yes` skips the question). It copies
+1. **Install once:** run `stagepack install` from that folder, in a terminal (`--yes` skips the question). It copies
    the viewer, Node and the Slidev runtime to `~/.local/share/stagepack` (`$XDG_DATA_HOME/stagepack`) and
    registers `.sptx` files as their own type, `application/x-stagepack`, opened by Stagepack, so the file
    manager no longer treats them as zip files.
@@ -178,7 +232,40 @@ Needs a Linux (amd64) build host with `curl`, `tar`, `unzip` and `npm`. Go and N
 | `make licenses-go` | the licences of the Go modules the Linux and Windows programs link (`build/go-licenses.tsv`); fails on a module that isn't permissive or isn't in the table |
 | `make setup` | builds `dist/windows/Stagepack-Setup.exe`: the installer, with the Node and Slidev runtime and the viewer inside (needs `make node runtime OS=win32`; fetches go-winres, 0BSD, once for the icon) |
 
+| `make release VERSION=0.1.0` | `make test licenses-go`, then both builds with the version stamped in, packed into `dist/release/v0.1.0/` (below) |
+| `make gh-release VERSION=0.1.0` | publishes `dist/release/v0.1.0/` as the GitHub release `v0.1.0` (online) |
+
 For a Windows check without Windows: `GOOS=windows go vet ./...` and `GOOS=windows go build ./cmd/stagepack`.
+
+### Releasing
+
+`VERSION` (like `0.1.0`, no `v`) is stamped into both programs: `stagepack version` prints it, and on Windows
+it is in the file's version info and in the Settings → Apps entry. Builds without it say `dev`.
+
+1. Commit everything. `make release VERSION=0.1.0` refuses uncommitted changes (`ALLOW_DIRTY=1` makes a trial
+   build anyway) and a tag `v0.1.0` that is not the current commit. It runs `make test licenses-go`, builds
+   `dist/linux` and `dist/windows`, and writes `dist/release/v0.1.0/` (`build/release.sh`):
+
+   | file | what |
+   |---|---|
+   | `Stagepack-Setup.exe`, `PRESENTER.txt` | the Windows installer and the presenter's guide |
+   | `stagepack-0.1.0-linux-x64.tar.xz` | `dist/linux` (the program, `node/`, `runtimes/`, without the viewer's own state) and `LICENSE`, in one folder |
+   | `SHA256SUMS` | of the three above |
+   | `RELEASE_NOTES.md` | the text of the GitHub release |
+   | `npm/stagepack-0.1.0.tgz` | the npm launcher (`npm/`), with this version and `SHA256SUMS` inside |
+
+   Node and the runtime are reused from `dist/` when they are there (they are pinned by
+   `build/versions.env` and `runtime/package-lock.json`); `make node runtime OS=linux` (and `OS=win32`) makes
+   them again. The tarball is the same bytes for the same `dist/linux` and commit. `PRERELEASE=1` adds a
+   pre-release note to `RELEASE_NOTES.md`, but not GitHub's pre-release flag: `releases/latest`, which the
+   install script and the download link use, skips pre-releases.
+2. Push the commit, then `make gh-release VERSION=0.1.0`. It checks
+   the files against `SHA256SUMS` and runs `gh release create v0.1.0`, which tags the commit on GitHub. The
+   install script uses the latest release, and `releases/latest/download/Stagepack-Setup.exe` always links
+   to the latest installer.
+3. Publish the npm package, logged in as its owner (`npm login`): `npm publish
+   dist/release/v0.1.0/npm/stagepack-0.1.0.tgz`. The launcher downloads from the GitHub release `v0.1.0`, so
+   publish it only after step 2.
 
 To use the Linux build on this machine: `make build-linux`, then `dist/linux/stagepack install` (see "On Linux"
 above). Run it again after a new build to update the installed copy; a talk must not be open meanwhile.

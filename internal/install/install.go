@@ -21,6 +21,7 @@ import (
 	"stagepack/internal/brand"
 	"stagepack/internal/instance"
 	"stagepack/internal/trust"
+	"stagepack/internal/version"
 )
 
 // RegValue is one registry value. Name "" is the key's default value. A value
@@ -61,6 +62,7 @@ func RegistryPlan(exe, icon string) []RegValue {
 		{progKey + `\DefaultIcon`, "", `"` + icon + `"`},
 		{progKey + `\shell\open\command`, "", `"` + exe + `" open "%1"`},
 		{uninstallKey, "DisplayName", brand.Name},
+		{uninstallKey, "DisplayVersion", version.Version},
 		{uninstallKey, "UninstallString", `"` + exe + `" uninstall`},
 		{uninstallKey, "InstallLocation", winDir(exe)},
 		{uninstallKey, "NoModify", "1"},

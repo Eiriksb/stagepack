@@ -12,6 +12,7 @@ import (
 
 	"stagepack/internal/brand"
 	"stagepack/internal/trust"
+	"stagepack/internal/version"
 )
 
 const (
@@ -40,6 +41,7 @@ func TestRegistryPlan(t *testing.T) {
 		{classes + brand.ProgID + `\DefaultIcon`, "", `"` + testIcon + `"`},
 		{classes + brand.ProgID + `\shell\open\command`, "", `"` + testExe + `" open "%1"`},
 		{uninst, "DisplayName", brand.Name},
+		{uninst, "DisplayVersion", version.Version},
 		{uninst, "UninstallString", `"` + testExe + `" uninstall`},
 		{uninst, "InstallLocation", `C:\Users\Åse\AppData\Local\` + brand.Name},
 		{uninst, "NoModify", "1"},

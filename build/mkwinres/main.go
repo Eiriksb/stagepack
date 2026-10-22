@@ -1,6 +1,6 @@
 // Command mkwinres writes the go-winres config (icon, manifest, version info)
 // for the Windows program, with the product's names taken from internal/brand.
-// Usage: go run ./build/mkwinres OUTDIR ICON.ico
+// Usage: go run ./build/mkwinres OUTDIR ICON.ico [VERSION]
 package main
 
 import (
@@ -11,14 +11,20 @@ import (
 	"strings"
 
 	"stagepack/internal/brand"
+	"stagepack/internal/version"
 )
 
 func main() {
-	if len(os.Args) != 3 {
-		fmt.Fprintln(os.Stderr, "usage: mkwinres OUTDIR ICON.ico")
+	if len(os.Args) != 3 && len(os.Args) != 4 {
+		fmt.Fprintln(os.Stderr, "usage: mkwinres OUTDIR ICON.ico [VERSION]")
 		os.Exit(2)
 	}
 	out, icon := os.Args[1], os.Args[2]
+	ver := version.Version
+	if len(os.Args) == 4 {
+		ver = os.Args[3]
+	}
+	num := version.Windows(ver)
 	rel, err := filepath.Rel(out, icon)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -37,14 +43,14 @@ func main() {
 			"use-common-controls-v6": true,
 		}}},
 		"RT_VERSION": map[string]any{"#1": map[string]any{"0000": map[string]any{
-			"fixed": map[string]any{"file_version": "0.1.0.0", "product_version": "0.1.0.0"},
+			"fixed": map[string]any{"file_version": num, "product_version": num},
 			"info": map[string]any{"0409": map[string]any{
 				"FileDescription":  brand.Name + " talk viewer",
-				"FileVersion":      "0.1.0.0",
+				"FileVersion":      num,
 				"InternalName":     brand.Name,
 				"OriginalFilename": exe,
 				"ProductName":      brand.Name,
-				"ProductVersion":   "0.1.0.0",
+				"ProductVersion":   ver,
 			}},
 		}}},
 	}

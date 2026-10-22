@@ -19,7 +19,12 @@ else
 $(error OS must be linux or win32, not $(OS))
 endif
 
-.PHONY: go node-linux node-win node runtime test e2e payload winres viewer setup build-linux build-windows licenses-go
+.PHONY: go node-linux node-win node runtime test e2e payload winres viewer setup build-linux build-windows licenses-go release gh-release
+
+# VERSION (0.1.0, no "v") is stamped into the programs (`stagepack version`, the Windows version info and
+# uninstall entry). `make release VERSION=0.1.0` sets it; other builds are "dev".
+VERSION ?=
+GO_LDFLAGS := $(if $(VERSION),-X stagepack/internal/version.Version=$(VERSION))
 
 go:
 	build/fetch.sh go
@@ -53,12 +58,12 @@ e2e: go
 # dist/<os>/stagepack[.exe]: the viewer itself (the Windows one is cross-compiled)
 .PHONY: build
 build: go
-	GOOS=$(DIST_OS) GOARCH=amd64 $(GO) build -o dist/$(DIST_OS)/stagepack$(if $(filter win32,$(OS)),.exe) ./cmd/stagepack
+	GOOS=$(DIST_OS) GOARCH=amd64 $(GO) build -ldflags "$(GO_LDFLAGS)" -o dist/$(DIST_OS)/stagepack$(if $(filter win32,$(OS)),.exe) ./cmd/stagepack
 
 # dist/windows/stagepack.exe: the Windows viewer without a console, with icon and manifest. It carries no
 # payload; the installer puts this file on the user's machine (the console build is `make build OS=win32`).
 viewer: go winres
-	GOOS=windows GOARCH=amd64 $(GO) build -trimpath -ldflags "-H=windowsgui -s -w" -o dist/windows/stagepack.exe ./cmd/stagepack
+	GOOS=windows GOARCH=amd64 $(GO) build -trimpath -ldflags "-H=windowsgui -s -w $(GO_LDFLAGS)" -o dist/windows/stagepack.exe ./cmd/stagepack
 
 # internal/install/payload.zip: the Windows node/ and runtimes/ and the viewer, to embed
 # (needs `make node runtime OS=win32` and `make viewer`)
@@ -68,14 +73,14 @@ payload:
 # cmd/stagepack/rsrc_windows_amd64.syso: icon, manifest and version info for the Windows program.
 # go-winres (0BSD, pinned in build/versions.env) is fetched on first use and runs at build time only.
 winres: go
-	$(GO) run ./build/mkwinres dist/winres assets/stagepack.ico
+	$(GO) run ./build/mkwinres dist/winres assets/stagepack.ico $(or $(VERSION),dev)
 	cd cmd/stagepack && $(GO) run github.com/tc-hib/go-winres@$(WINRES_VERSION) make --in ../../dist/winres/winres.json --arch amd64
 
 SETUP_NAME := Stagepack-Setup.exe
 
 # dist/windows/$(SETUP_NAME): the installer. It holds the runtime and a copy of the viewer, and needs no console.
 setup: viewer payload
-	GOOS=windows GOARCH=amd64 $(GO) build -tags payload -trimpath -ldflags "-H=windowsgui -s -w" -o dist/windows/$(SETUP_NAME) ./cmd/stagepack
+	GOOS=windows GOARCH=amd64 $(GO) build -tags payload -trimpath -ldflags "-H=windowsgui -s -w $(GO_LDFLAGS)" -o dist/windows/$(SETUP_NAME) ./cmd/stagepack
 
 # The finished builds. The 600 MB node/ and runtimes/ are made only when they are missing (they depend on
 # the directories, not on a phony rebuild); `make node runtime OS=...` forces them again.
@@ -108,3 +113,19 @@ build-windows: $(WIN_NODE) $(WIN_RUNTIME)
 # The licences of the Go modules the programs link; fails on one that isn't permissive or isn't in build/go-licenses.tsv
 licenses-go: go
 	build/go-licenses.sh
+
+# dist/release/v$(VERSION)/: what a GitHub release carries (Stagepack-Setup.exe, PRESENTER.txt, the Linux
+# tarball stagepack-$(VERSION)-linux-x64.tar.xz, SHA256SUMS) and the npm package (npm/stagepack-$(VERSION).tgz,
+# with SHA256SUMS inside). Builds both programs with VERSION stamped in; Node and the runtime are made only
+# when missing, as in build-linux and build-windows. Refuses a tree with uncommitted changes (ALLOW_DIRTY=1).
+release: go
+	@test -n "$(VERSION)" || { echo "usage: make release VERSION=0.1.0" >&2; exit 2; }
+	build/release.sh check $(VERSION)
+	$(MAKE) test licenses-go
+	$(MAKE) build-linux build-windows VERSION=$(VERSION)
+	build/release.sh pack $(VERSION)
+
+# Publishes dist/release/v$(VERSION) as the GitHub release v$(VERSION) (tags the current commit). Online.
+gh-release:
+	@test -n "$(VERSION)" || { echo "usage: make gh-release VERSION=0.1.0" >&2; exit 2; }
+	build/release.sh github $(VERSION)

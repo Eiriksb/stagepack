@@ -19,6 +19,7 @@ import (
 	"stagepack/internal/deck"
 	"stagepack/internal/install"
 	"stagepack/internal/ui"
+	"stagepack/internal/version"
 )
 
 func TestPackCommand(t *testing.T) {
@@ -403,6 +404,18 @@ func TestRelativeHomeIsMadeAbsolute(t *testing.T) {
 		}
 		if !slices.Contains(f.calls, c+" "+filepath.Join(base, "rel")) {
 			t.Errorf("%s: calls = %q", c, f.calls)
+		}
+	}
+}
+
+func TestVersionCommand(t *testing.T) {
+	for _, arg := range []string{"version", "--version"} {
+		var so, se bytes.Buffer
+		if code := run([]string{arg}, &so, &se); code != 0 {
+			t.Fatalf("%s: exit %d: %s", arg, code, se.String())
+		}
+		if got := strings.TrimSpace(so.String()); got != version.Version {
+			t.Errorf("%s printed %q, want %q", arg, got, version.Version)
 		}
 	}
 }
