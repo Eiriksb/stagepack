@@ -1,0 +1,7 @@
+# Go modules Stagepack links, and the licence of each (read from the LICENSE file in the module cache).
+# build/go-licenses.sh checks `go version -m` of the built programs against this table: a module that is not
+# listed fails the check, so a new dependency has to be reviewed and added here by hand.
+# module	version	SPDX licence
+golang.org/x/sys	v0.49.0	BSD-3-Clause
+fyne.io/systray	v1.12.2	Apache-2.0
+github.com/godbus/dbus/v5	v5.1.0	BSD-2-Clause
