@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"flag"
 	"fmt"
@@ -8,6 +9,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 
 	"stagepack/internal/brand"
@@ -17,11 +20,12 @@ import (
 
 // installer is everything install and uninstall do to the outside; tests replace it.
 type installer struct {
-	confirm     func(title, msg string) bool
-	notice      func(title, msg string)
-	alert       func(title, msg string)
-	busy        func(title, msg string) (done func())
-	payload     func() (fs.FS, bool)
+	confirm func(title, msg string) bool
+	notice  func(title, msg string)
+	alert   func(title, msg string)
+	busy    func(title, msg string) (done func())
+	payload func(home string) (fs.FS, bool) // what to install into home
+
 	install     func(home string, payload fs.FS) error
 	uninstall   func(home string) error
 	keptJournal func(home string) bool
@@ -31,12 +35,26 @@ type installer struct {
 	installedHome func() (string, bool)
 }
 
-var inst = installer{
+var inst = defaultInstaller(runtime.GOOS)
+
+// defaultInstaller is the installer for os: on Windows message boxes and the runtime
+// inside the program; on Linux the terminal, and the runtime beside the program.
+func defaultInstaller(forOS string) installer {
+	in := installerBase
+	if forOS != "windows" {
+		t := terminal{in: os.Stdin, out: os.Stdout, err: os.Stderr}
+		in.confirm, in.notice, in.alert, in.busy = t.confirm, t.notice, t.alert, t.busy
+		in.payload = install.ProgramDirPayload
+	}
+	return in
+}
+
+var installerBase = installer{
 	confirm:     ui.Confirm,
 	notice:      ui.Notice,
 	alert:       ui.Alert,
 	busy:        ui.Busy,
-	payload:     install.Payload,
+	payload:     func(string) (fs.FS, bool) { return install.Payload() },
 	install:     install.Install,
 	uninstall:   install.Uninstall,
 	keptJournal: install.KeptJournal,
@@ -54,8 +72,16 @@ var inst = installer{
 	},
 }
 
-// defaultInstallHome is %LOCALAPPDATA%\<Name>.
+// defaultInstallHome is %LOCALAPPDATA%\<Name> on Windows, $XDG_DATA_HOME/<AppID>
+// (~/.local/share/<AppID>) elsewhere.
 func defaultInstallHome() (string, error) {
+	if goos != "windows" {
+		data, err := install.XDGDataHome(os.Getenv)
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(data, brand.AppID), nil
+	}
 	base := os.Getenv("LOCALAPPDATA")
 	if base == "" {
 		return "", errors.New("LOCALAPPDATA is not set")
@@ -63,9 +89,17 @@ func defaultInstallHome() (string, error) {
 	return filepath.Join(base, brand.Name), nil
 }
 
+// defaultHomeHelp names the default install folder in the usage text.
+func defaultHomeHelp() string {
+	if goos != "windows" {
+		return "$XDG_DATA_HOME/" + brand.AppID + ", ~/.local/share/" + brand.AppID
+	}
+	return "%LOCALAPPDATA%\\" + brand.Name
+}
+
 // resolveHome is the install folder, as an absolute path: the --home flag, else (for an
 // uninstall run by the installed program) the folder that program is in, else
-// %LOCALAPPDATA%\<Name>.
+// the default (defaultInstallHome).
 func resolveHome(flagHome string, own bool) (string, error) {
 	home := flagHome
 	if home == "" && own {
@@ -87,7 +121,7 @@ func installFlags(name string, args []string, stderr io.Writer) (home string, ye
 	fl := flag.NewFlagSet(name, flag.ContinueOnError)
 	fl.SetOutput(stderr)
 	fl.BoolVar(&yes, "yes", false, "do not ask first")
-	fl.StringVar(&home, "home", "", "the install folder (default: %LOCALAPPDATA%\\"+brand.Name+")")
+	fl.StringVar(&home, "home", "", "the install folder (default: "+defaultHomeHelp()+")")
 	if err := fl.Parse(args); err != nil || fl.NArg() != 0 {
 		if err == nil {
 			fmt.Fprintf(stderr, "usage: %s %s [--yes] [--home DIR]\n", cmdName, name)
@@ -98,7 +132,8 @@ func installFlags(name string, args []string, stderr io.Writer) (home string, ye
 }
 
 // runInstall asks, unpacks the bundled runtime, registers the file type and
-// says so. Everything the person sees is a message box: this runs without a console.
+// says so. On Windows everything the person sees is a message box: this runs
+// without a console. On Linux it runs in a terminal.
 func runInstall(args []string, stderr io.Writer) int {
 	home, yes, ok := installFlags("install", args, stderr)
 	if !ok {
@@ -110,9 +145,14 @@ func runInstall(args []string, stderr io.Writer) int {
 		return 1
 	}
 	defer startLog(home)()
-	payload, has := inst.payload()
+	payload, has := inst.payload(home)
 	if !has {
-		inst.alert(brand.Name, "This copy of "+brand.Name+" has no runtime bundled with it, so it cannot install itself.")
+		if goos == "windows" {
+			inst.alert(brand.Name, "This copy of "+brand.Name+" has no runtime bundled with it, so it cannot install itself.")
+		} else {
+			inst.alert(brand.Name, "This copy of "+brand.Name+" has no node/ and runtimes/ folder beside it, so it cannot install itself. "+
+				"Run the one in dist/linux (make build-linux).")
+		}
 		return 1
 	}
 	if !yes && !inst.confirm(brand.Name, "Install "+brand.Name+" for this user? It opens "+brand.Ext+" talks.") {
@@ -125,7 +165,11 @@ func runInstall(args []string, stderr io.Writer) int {
 		inst.alert(brand.Name, "Could not install "+brand.Name+": "+err.Error())
 		return 1
 	}
-	inst.notice(brand.Name, "Done. Double-click any "+brand.Ext+" file to present it.")
+	msg := "Done. Double-click any " + brand.Ext + " file to present it."
+	if goos != "windows" {
+		msg += "\nInstalled in " + home + ". To remove it: " + filepath.Join(home, install.ExeName()) + " uninstall"
+	}
+	inst.notice(brand.Name, msg)
 	return 0
 }
 
@@ -164,4 +208,31 @@ func runUninstall(args []string, stderr io.Writer) int {
 	// Only now: the program's file is locked until this process ends, and the notice is modal.
 	inst.cleanup(home)
 	return 0
+}
+
+// terminal asks and tells on a terminal: install and uninstall on Linux are run from a shell.
+type terminal struct {
+	in       io.Reader
+	out, err io.Writer
+}
+
+// confirm asks msg and reads the answer; only y or yes is yes, and no answer is no.
+func (t terminal) confirm(title, msg string) bool {
+	fmt.Fprintf(t.out, "%s [y/N] ", msg)
+	line, err := bufio.NewReader(t.in).ReadString('\n')
+	if err != nil && line == "" {
+		fmt.Fprintln(t.out, "\n(no answer, so no: pass --yes to skip the question)")
+		return false
+	}
+	a := strings.ToLower(strings.TrimSpace(line))
+	return a == "y" || a == "yes"
+}
+
+func (t terminal) notice(title, msg string) { fmt.Fprintln(t.out, msg) }
+
+func (t terminal) alert(title, msg string) { fmt.Fprintln(t.err, title+": "+msg) }
+
+func (t terminal) busy(title, msg string) (done func()) {
+	fmt.Fprintln(t.out, msg)
+	return func() {}
 }

@@ -43,6 +43,21 @@ const (
 	wmClose = 0x0010 // WM_CLOSE
 )
 
+// infoBox, errorBox, confirmBox and saveBox are the tray's dialogs (tray.go).
+
+func infoBox(title, msg string) { messageBox(title, msg, windows.MB_ICONINFORMATION) }
+
+func errorBox(title, msg string) { messageBox(title, msg, windows.MB_ICONERROR) }
+
+// confirmBox shows a warning with Yes and No, No the default.
+func confirmBox(title, msg string) bool {
+	return messageBoxButtons(title, msg, windows.MB_YESNO|windows.MB_ICONWARNING|windows.MB_DEFBUTTON2) == idYes
+}
+
+func saveBox(title, suggest, filterName, ext string) (string, bool, error) {
+	return saveFileDialog(title, suggest, filterName, ext)
+}
+
 // Confirm asks a yes/no question and reports whether the answer is yes.
 func Confirm(title, msg string) bool {
 	return messageBoxButtons(title, msg, windows.MB_YESNO|windows.MB_ICONQUESTION) == idYes

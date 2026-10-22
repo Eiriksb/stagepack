@@ -151,9 +151,9 @@ func TestInstallFilesFailureKeepsOldInstall(t *testing.T) {
 		t.Fatal(err)
 	}
 	bad := payloadFS("2")
-	bad["runtimes/53/broken"] = &fstest.MapFile{Data: []byte("x"), Mode: fs.ModeSymlink}
+	bad["runtimes/53/broken"] = &fstest.MapFile{Data: []byte("../../../outside"), Mode: fs.ModeSymlink}
 	if err := installFiles(home, bad); err == nil {
-		t.Fatal("a symlink in the payload was accepted")
+		t.Fatal("a symlink leading out of the payload was accepted")
 	}
 	if got := read(t, home, "node/node.exe"); got != "node 1" {
 		t.Errorf("old install damaged by a failed reinstall: %q", got)
@@ -177,9 +177,9 @@ type fakeRegistry struct {
 	err     error
 }
 
-func (f *fakeRegistry) write(plan []RegValue) error { f.written = plan; return f.err }
-func (f *fakeRegistry) remove() error               { f.deleted = true; return nil }
-func (f *fakeRegistry) notify()                     { f.notices++ }
+func (f *fakeRegistry) register(exe string) error { f.written = RegistryPlan(exe, exe); return f.err }
+func (f *fakeRegistry) remove() error             { f.deleted = true; return nil }
+func (f *fakeRegistry) notify()                   { f.notices++ }
 
 func TestInstallEndToEnd(t *testing.T) {
 	home := filepath.Join(t.TempDir(), brand.Name)
@@ -447,5 +447,86 @@ func TestCleanupCommandHoldsNoPaths(t *testing.T) {
 func TestPayloadNoneWithoutTag(t *testing.T) {
 	if _, ok := Payload(); ok && !payloadBuilt {
 		t.Error("Payload reports a payload in a build without the tag")
+	}
+}
+
+func TestUnpackKeepsLinksInsideAndProgramModes(t *testing.T) {
+	home := t.TempDir()
+	p := payloadFS("1")
+	p["node/bin/node"] = &fstest.MapFile{Data: []byte("ELF"), Mode: 0o755}
+	p["node/lib/npm-cli.js"] = &fstest.MapFile{Data: []byte("js"), Mode: 0o644}
+	p["node/bin/npm"] = &fstest.MapFile{Data: []byte("../lib/npm-cli.js"), Mode: fs.ModeSymlink}
+	if err := installFiles(home, p); err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Stat(filepath.Join(home, "node/bin/node")); err != nil || fi.Mode().Perm() != 0o755 {
+		t.Errorf("node/bin/node: %v, %v; want mode 0755", fi.Mode(), err)
+	}
+	if fi, err := os.Stat(filepath.Join(home, "node/lib/npm-cli.js")); err != nil || fi.Mode().Perm() != 0o644 {
+		t.Errorf("npm-cli.js: %v, %v; want mode 0644", fi.Mode(), err)
+	}
+	if to, err := os.Readlink(filepath.Join(home, "node/bin/npm")); err != nil || to != filepath.FromSlash("../lib/npm-cli.js") {
+		t.Errorf("node/bin/npm -> %q, %v", to, err)
+	}
+	if got := read(t, home, "node/bin/npm"); got != "js" {
+		t.Errorf("the link does not lead to its file: %q", got)
+	}
+
+	for _, to := range []string{"/etc/passwd", "../../../../x", `..\\x`} {
+		bad := payloadFS("2")
+		bad["node/bin/bad"] = &fstest.MapFile{Data: []byte(to), Mode: fs.ModeSymlink}
+		if err := installFiles(home, bad); err == nil {
+			t.Errorf("link to %q accepted", to)
+		}
+	}
+}
+
+func TestDirPayloadShowsOnlyTheRuntime(t *testing.T) {
+	build := t.TempDir()
+	for _, rel := range []string{"node/bin/node", "runtimes/53/package.json", "runtimes/53/work/abc/slides.md",
+		"journal/x.json", "logs/viewer.log", "instances/a.json", ExeName()} {
+		write(t, build, rel, "x")
+	}
+	os.Symlink("node", filepath.Join(build, "node/bin/nodejs"))
+	home := filepath.Join(t.TempDir(), "home")
+	p, ok := dirPayload(build, home)
+	if !ok {
+		t.Fatal("no payload in a build folder")
+	}
+	var got []string
+	fs.WalkDir(p, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !d.IsDir() {
+			got = append(got, path)
+		}
+		return nil
+	})
+	want := []string{"node/bin/node", "node/bin/nodejs", "runtimes/53/package.json"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("payload files = %q, want %q", got, want)
+	}
+	if _, err := fs.Stat(p, "runtimes/53/work/abc/slides.md"); err == nil {
+		t.Error("a work folder can be opened through the payload")
+	}
+	if _, err := fs.Stat(p, ExeName()); err == nil {
+		t.Error("the program is in the payload: install would not copy the running one")
+	}
+	if err := installFiles(home, p); err != nil {
+		t.Fatal(err)
+	}
+	if to, err := os.Readlink(filepath.Join(home, "node/bin/nodejs")); err != nil || to != "node" {
+		t.Errorf("link not installed: %q, %v", to, err)
+	}
+
+	// Run from the install folder itself: nothing to unpack.
+	if p, ok := dirPayload(home, home); !ok {
+		t.Error("an install folder has a runtime")
+	} else if ents, _ := fs.ReadDir(p, "."); len(ents) != 0 {
+		t.Errorf("payload of the install folder itself = %v, want none", ents)
+	}
+	if _, ok := dirPayload(t.TempDir(), home); ok {
+		t.Error("payload found in an empty folder")
 	}
 }

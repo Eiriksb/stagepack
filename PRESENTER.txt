@@ -48,3 +48,10 @@ loaded from the web; then the slides still work, with other fonts.
    Talks without code of their own open without this question.
 
 To remove Stagepack: Settings → Apps → Stagepack → Uninstall. Your .sptx files are not touched.
+
+On Linux (Ubuntu and other desktops)
+   There is no setup program. Run "stagepack install" from the Linux build folder once, in a terminal; it
+   needs no sudo. Then double-click the .sptx file. The Stagepack icon is at the top right of the screen,
+   with the same menu as above (Open presenter, Open audience view, Save a copy…, Stop).
+   The "… contains code" question needs zenity (installed on Ubuntu). Without it the talk is not opened.
+   To remove Stagepack: run ~/.local/share/stagepack/stagepack uninstall. Your .sptx files are not touched.

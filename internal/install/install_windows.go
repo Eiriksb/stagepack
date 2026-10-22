@@ -28,6 +28,8 @@ func subKey(k string) (string, error) {
 	return rest, nil
 }
 
+func (r winRegistry) register(exe string) error { return r.write(RegistryPlan(exe, exe)) }
+
 func (winRegistry) write(plan []RegValue) error {
 	for _, v := range plan {
 		sub, err := subKey(v.Key)

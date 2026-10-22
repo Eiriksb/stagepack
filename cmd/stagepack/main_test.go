@@ -157,7 +157,7 @@ func withFakeInstaller(t *testing.T, f *fakeInstaller) {
 			f.calls = append(f.calls, "busy: "+msg)
 			return func() { f.calls = append(f.calls, "busy done") }
 		},
-		payload: func() (fs.FS, bool) { return fstest.MapFS{}, f.hasLoad },
+		payload: func(string) (fs.FS, bool) { return fstest.MapFS{}, f.hasLoad },
 		install: func(home string, _ fs.FS) error { f.calls = append(f.calls, "install "+home); return f.installed },
 		uninstall: func(home string) error {
 			f.calls = append(f.calls, "uninstall "+home)
@@ -244,18 +244,74 @@ func TestInstallWithoutPayloadOrWithErrorAlerts(t *testing.T) {
 	}
 }
 
-func TestInstallIsWindowsOnly(t *testing.T) {
+func TestInstallIsForWindowsAndLinux(t *testing.T) {
 	f := &fakeInstaller{yes: true, hasLoad: true}
 	withFakeInstaller(t, f)
-	goos = "linux"
+	goos = "darwin"
 	var so, se bytes.Buffer
 	for _, c := range []string{"install", "uninstall"} {
 		if code := run([]string{c}, &so, &se); code != 2 {
-			t.Errorf("%s on linux: exit %d", c, code)
+			t.Errorf("%s on darwin: exit %d", c, code)
 		}
 	}
 	if len(f.calls) != 0 {
-		t.Errorf("calls on linux: %q", f.calls)
+		t.Errorf("calls on darwin: %q", f.calls)
+	}
+}
+
+func TestInstallOnLinuxGoesToTheDataFolder(t *testing.T) {
+	data := filepath.Join(t.TempDir(), "share")
+	t.Setenv("XDG_DATA_HOME", data)
+	f := &fakeInstaller{yes: true, hasLoad: true}
+	withFakeInstaller(t, f)
+	goos = "linux"
+	home := filepath.Join(data, brand.AppID)
+	var so, se bytes.Buffer
+	if code := run([]string{"install"}, &so, &se); code != 0 {
+		t.Fatalf("exit %d: %s", code, se.String())
+	}
+	if !slices.Contains(f.calls, "install "+home) {
+		t.Errorf("calls = %q, want an install into %s", f.calls, home)
+	}
+	if last := f.calls[len(f.calls)-1]; !strings.Contains(last, filepath.Join(home, brand.AppID)+" uninstall") {
+		t.Errorf("the notice does not say how to uninstall: %q", last)
+	}
+	f.calls = nil
+	if code := run([]string{"uninstall"}, &so, &se); code != 0 || !slices.Contains(f.calls, "uninstall "+home) {
+		t.Errorf("uninstall: exit %d, calls %q", code, f.calls)
+	}
+
+	// Without node/ and runtimes/ beside the program there is nothing to install.
+	f.calls, f.hasLoad = nil, false
+	if code := run([]string{"install", "--yes"}, &so, &se); code != 1 || !strings.Contains(strings.Join(f.calls, ""), "make build-linux") {
+		t.Errorf("no runtime: exit %d, calls %q", code, f.calls)
+	}
+}
+
+func TestTerminalDialogs(t *testing.T) {
+	for in, want := range map[string]bool{"y\n": true, "Yes\n": true, " yes ": true, "n\n": false, "\n": false, "": false, "sure\n": false} {
+		var out bytes.Buffer
+		tm := terminal{in: strings.NewReader(in), out: &out, err: &out}
+		if got := tm.confirm(brand.Name, "Install?"); got != want {
+			t.Errorf("answer %q: %v, want %v", in, got, want)
+		}
+		if !strings.HasPrefix(out.String(), "Install? [y/N] ") {
+			t.Errorf("prompt %q", out.String())
+		}
+		if in == "" && !strings.Contains(out.String(), "--yes") {
+			t.Errorf("no answer, and no hint about --yes: %q", out.String())
+		}
+	}
+	var out, errs bytes.Buffer
+	tm := terminal{in: strings.NewReader(""), out: &out, err: &errs}
+	tm.busy(brand.Name, "Installing…")()
+	tm.notice(brand.Name, "Done.")
+	tm.alert(brand.Name, "Broken.")
+	if out.String() != "Installing…\nDone.\n" || errs.String() != brand.Name+": Broken.\n" {
+		t.Errorf("out %q, err %q", out.String(), errs.String())
+	}
+	if l := defaultInstaller("linux"); l.payload == nil || l.confirm == nil {
+		t.Error("no Linux installer")
 	}
 }
 

@@ -1,6 +1,6 @@
 // Package ui is what the person presenting sees of a running deck: a tray icon
-// with a small menu on Windows, or JSON lines on stdout when headless (tests,
-// other OSes).
+// with a small menu on Windows and Linux, or JSON lines on stdout when headless
+// (tests, other OSes).
 package ui
 
 import "stagepack/internal/save"

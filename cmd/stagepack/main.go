@@ -51,8 +51,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case "open":
 		return runOpen(args[1:], stdout, stderr)
 	case "install", "uninstall":
-		if goos != "windows" {
-			fmt.Fprintf(stderr, "%s: %s is for Windows only\n", brand.Name, args[0])
+		if goos != "windows" && goos != "linux" {
+			fmt.Fprintf(stderr, "%s: %s is for Windows and Linux only\n", brand.Name, args[0])
 			return 2
 		}
 		if args[0] == "install" {

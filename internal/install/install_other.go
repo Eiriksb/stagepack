@@ -2,14 +2,14 @@
 
 package install
 
-// There is no registry here: Install and Uninstall unpack and remove files
-// only (this is what the tests run).
-type noRegistry struct{}
+import "os"
 
-func (noRegistry) write([]RegValue) error { return nil }
-func (noRegistry) remove() error          { return nil }
-func (noRegistry) notify()                {}
+// The file type is registered the freedesktop.org way (xdg.go).
+var platformRegistry assoc = &xdgDesktop{}
 
-var platformRegistry assoc = noRegistry{}
-
-func scheduleSelfDelete(self, home string) {}
+// scheduleSelfDelete deletes the running program, and then home if it is empty,
+// right away: unlike Windows, a running program's file can be removed.
+func scheduleSelfDelete(self, home string) {
+	os.Remove(self)
+	os.Remove(home)
+}

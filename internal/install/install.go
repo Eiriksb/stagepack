@@ -1,7 +1,7 @@
-// Package install puts the viewer on a Windows user's machine and takes it off
-// again: it unpacks the bundled Node and Slidev runtime into a per-user folder,
-// copies the program there and registers the file type under HKCU, so that no
-// administrator rights are needed.
+// Package install puts the viewer on a user's machine and takes it off again:
+// it unpacks the Node and Slidev runtime into a per-user folder, copies the
+// program there and registers the file type for this user only (under HKCU on
+// Windows, in ~/.local/share on Linux), so that no administrator rights are needed.
 //
 // Everything that is not a Win32 call is plain Go, so it is tested on Linux.
 package install
@@ -12,7 +12,9 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -37,7 +39,12 @@ var (
 )
 
 // ExeName is the program's file name inside the install folder.
-func ExeName() string { return strings.ToLower(brand.Name) + ".exe" }
+func ExeName() string {
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(brand.Name) + ".exe"
+	}
+	return brand.AppID
+}
 
 // isDWORD says whether the Windows writer stores the value of name as a DWORD
 // (the plan carries it as its decimal string).
@@ -68,12 +75,15 @@ func winDir(p string) string {
 	return "."
 }
 
-// assoc is the Windows-only part: file association and shell notification.
+// assoc is the desktop's part: the file association and its notification. It
+// is the registry on Windows (RegistryPlan), the freedesktop.org files on Linux
+// (xdg.go).
 type assoc interface {
-	write(plan []RegValue) error
-	// remove deletes what write created.
+	// register makes the program at exe open the file type.
+	register(exe string) error
+	// remove deletes what register created.
 	remove() error
-	// notify tells Explorer that associations changed, so the icon shows at once.
+	// notify tells the shell that associations changed, so the icon shows at once.
 	notify()
 }
 
@@ -130,7 +140,7 @@ func install(home string, payload fs.FS, self string, reg assoc) error {
 	if err := os.WriteFile(filepath.Join(home, markerName()), []byte(brand.Name+" install folder: Uninstall deletes only here.\n"), 0o644); err != nil {
 		return fmt.Errorf("write the install marker: %w", err)
 	}
-	if err := reg.write(RegistryPlan(exe, exe)); err != nil {
+	if err := reg.register(exe); err != nil {
 		return fmt.Errorf("register %s files: %w", brand.Ext, err)
 	}
 	reg.notify()
@@ -235,23 +245,50 @@ func unpack(src fs.FS, dst string) error {
 		if d.IsDir() {
 			return os.MkdirAll(target, 0o755)
 		}
+		if d.Type()&fs.ModeSymlink != 0 {
+			return unpackLink(src, p, target)
+		}
 		if !d.Type().IsRegular() {
 			return fmt.Errorf("the bundled files hold something that is not a file: %s", p)
+		}
+		var mode fs.FileMode = 0o644
+		if fi, err := d.Info(); err == nil && fi.Mode().Perm()&0o111 != 0 {
+			mode = 0o755 // node, and the scripts Node packages run
 		}
 		in, err := src.Open(p)
 		if err != nil {
 			return err
 		}
 		defer in.Close()
-		return writeFile(target, in, buf)
+		return writeFileMode(target, in, buf, mode)
 	})
 }
 
-func writeFile(target string, r io.Reader, buf []byte) error {
+// unpackLink makes the symbolic link p of src (Node's bin/npm, node_modules/.bin/…)
+// at target. Only a relative link that stays inside src is made.
+func unpackLink(src fs.FS, p, target string) error {
+	to, err := fs.ReadLink(src, p)
+	if err != nil {
+		return err
+	}
+	if path.IsAbs(to) || strings.ContainsAny(to, `\:`) || !fs.ValidPath(path.Join(path.Dir(p), to)) {
+		return fmt.Errorf("the bundled files hold a link that leads outside them: %s -> %s", p, to)
+	}
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	return os.Symlink(filepath.FromSlash(to), target)
+}
+
+func writeFile(target string, r io.Reader, buf []byte) error {
+	return writeFileMode(target, r, buf, 0o644)
+}
+
+func writeFileMode(target string, r io.Reader, buf []byte, mode fs.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
 	if err != nil {
 		return err
 	}
@@ -276,7 +313,7 @@ func copyProgram(self, dst string) error {
 	}
 	defer in.Close()
 	tmp, old := dst+".new", dst+".old"
-	if err := writeFile(tmp, in, make([]byte, 256<<10)); err != nil {
+	if err := writeFileMode(tmp, in, make([]byte, 256<<10), 0o755); err != nil {
 		return err
 	}
 	os.Remove(old)

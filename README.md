@@ -10,8 +10,9 @@ runs that code as you, like opening any Slidev project. So before it shows such 
 for each version of the talk, like Office does for macros. Talks of only slides, styles, pictures and fonts
 open without asking.
 
-Status: the packer and the viewer work on Linux. The Windows installer is built and tested as far as
-cross-compiling and unit tests go, but see "Open items" below.
+Status: the packer, the viewer and the per-user install (file type, tray icon, dialogs) work on Linux
+(tested on Ubuntu with GNOME). The Windows installer is built and tested as far as cross-compiling and unit
+tests go, but see "Open items" below.
 
 ## For presenters
 
@@ -50,6 +51,28 @@ it then remembers your answer for this version of the talk, so you aren't asked 
 later, you are asked again. Talks without code never ask.
 
 To remove Stagepack: **Settings → Apps → Stagepack → Uninstall**. Your `.sptx` files are not touched.
+
+### On Linux
+
+There is no setup program: the Linux build (`make build-linux`, the folder `dist/linux` with `stagepack`,
+`node/` and `runtimes/` in it) installs itself for the current user, without sudo.
+
+1. **Install once:** run `dist/linux/stagepack install` in a terminal (`--yes` skips the question). It copies
+   the viewer, Node and the Slidev runtime to `~/.local/share/stagepack` (`$XDG_DATA_HOME/stagepack`) and
+   registers `.sptx` files as their own type, `application/x-stagepack`, opened by Stagepack, so the file
+   manager no longer treats them as zip files.
+2. **Double-click the `.sptx` file**, as on Windows. "Opening …" is shown meanwhile, then the presenter view
+   opens in your default browser.
+3. **The tray icon** (top right on Ubuntu) has the same menu as on Windows: the notes status, **Open
+   presenter**, **Open audience view**, **Save a copy…** and **Stop**. Ubuntu shows tray icons out of the box;
+   on other GNOME desktops turn on the AppIndicator extension. Where no tray is shown, a small window with the
+   same buttons stands in for it; closing that window stops the talk.
+4. **Dialogs** (errors, "Save a copy…", and the "… contains code" question) are shown with `zenity`, or
+   `kdialog` on KDE. Without either, messages go to the log and to a desktop notification, and the code
+   question is answered No: such a talk does not open until zenity is installed.
+5. **To remove it:** `~/.local/share/stagepack/stagepack uninstall`. It removes exactly what the install
+   added (the folder, the MIME type, the desktop entry, the icons and the default-application entry) and, as on
+   Windows, keeps notes that are not yet in any talk. Your `.sptx` files are not touched.
 
 ## For authors
 
@@ -106,8 +129,8 @@ case, as Windows finds them.
 The answer is remembered per talk (its id) and version: a hash of every file in it except the slides file, which
 note edits change, and of the reasons it contains code (so of its theme and addons). Any other change,
 repacking included, asks again. The list is `trusted.json` in the
-viewer's home. Where nobody can be asked (`stagepack open --headless`, and on Linux, where there is no tray),
-the answer is No; `stagepack open --trust-code FILE` runs a talk you trust without asking, and does not add it
+viewer's home. Where nobody can be asked (`stagepack open --headless`, and on Linux without `zenity` or
+`kdialog`), the answer is No; `stagepack open --trust-code FILE` runs a talk you trust without asking, and does not add it
 to the list.
 
 ### Fonts
@@ -150,9 +173,12 @@ Needs a Linux (amd64) build host with `curl`, `tar`, `unzip` and `npm`. Go and N
 
 For a Windows check without Windows: `GOOS=windows go vet ./...` and `GOOS=windows go build ./cmd/stagepack`.
 
+To use the Linux build on this machine: `make build-linux`, then `dist/linux/stagepack install` (see "On Linux"
+above). Run it again after a new build to update the installed copy; a talk must not be open meanwhile.
+
 ## Layout
 
-The viewer's home (on Windows `%LOCALAPPDATA%\Stagepack\`) holds:
+The viewer's home (on Windows `%LOCALAPPDATA%\Stagepack\`, on Linux `~/.local/share/stagepack/`) holds:
 
 ```
 stagepack.exe                                     the viewer (Windows; on Linux the stagepack program)
@@ -168,6 +194,17 @@ logs/viewer.log                                   the viewer's log (viewer.log.1
 logs/<key>.log                                    Slidev's output for one talk
 instances/<hash>.json, .lock                      one running talk: process, port, URL
 ```
+
+On Linux the install also writes, below `~/.local/share` (`$XDG_DATA_HOME`), and nothing else:
+
+```
+mime/packages/stagepack.xml                       application/x-stagepack: *.sptx, a subclass of application/zip
+applications/stagepack.desktop                    Exec=<home>/stagepack open %f, hidden from the app menu
+icons/hicolor/{256x256,48x48,32x32,16x16}/apps/stagepack.png   the icon (from assets/stagepack.ico)
+```
+
+and runs `update-mime-database`, `update-desktop-database` and `xdg-mime default stagepack.desktop
+application/x-stagepack` (which writes `~/.config/mimeapps.list`). The names come from `internal/brand`.
 
 A `.sptx` file is a zip. At its root is `stagepack.json`, the manifest (format version, id, title, created and
 updated times, Slidev version, entry file, metadata), next to the talk's own files (`slides.md`, `public/`, ...).
@@ -227,8 +264,11 @@ programs, reads their module lists with `go version -m`, and fails on a module t
 | module | version | licence | linked in |
 |---|---|---|---|
 | `golang.org/x/sys` | v0.49.0 | BSD-3-Clause | Windows |
-| `fyne.io/systray` | v1.12.2 | Apache-2.0 | Windows (the tray icon) |
-| `github.com/godbus/dbus/v5` | v5.1.0 | BSD-2-Clause | listed by `go version -m` for the Windows program (a dependency of systray) |
+| `fyne.io/systray` | v1.12.2 | Apache-2.0 | Windows and Linux (the tray icon) |
+| `github.com/godbus/dbus/v5` | v5.1.0 | BSD-2-Clause | Linux (systray's D-Bus tray, and the check for a tray area); listed for Windows too |
+
+On Linux no GUI library is linked: the tray speaks D-Bus in pure Go, and dialogs are the `zenity` or
+`kdialog` program run as a separate process (both GPL, so they are not linked or shipped).
 
 The npm side is checked by `build/licenses.mjs`, above.
 
