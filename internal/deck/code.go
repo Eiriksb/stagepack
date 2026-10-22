@@ -173,6 +173,8 @@ func packageOf(name string) (string, bool) {
 // slides' headmatter (JSON values; null or missing when not set). A theme that
 // isn't one the runtime bundles counts, and so do any addons: the runtime
 // bundles none, so each comes from the talk, a folder or a bundled package.
+// Each reason holds its value in full, one per addon: the reasons go into the
+// version hash (workspace.Work.AddCode), so nothing may be cut from them here.
 func HeadmatterReasons(theme, addons json.RawMessage) []string {
 	var out []string
 	var name string
@@ -180,11 +182,17 @@ func HeadmatterReasons(theme, addons json.RawMessage) []string {
 	case isNull(theme):
 	case json.Unmarshal(theme, &name) == nil && (name == "" || bundledThemes[name]):
 	default:
-		out = append(out, "the theme "+oneValue(theme)+` (any theme but the bundled "default" can run code)`)
+		out = append(out, "the theme "+string(bytes.TrimSpace(theme))+` (any theme but the bundled "default" can run code)`)
 	}
 	var list []json.RawMessage
-	if !isNull(addons) && (json.Unmarshal(addons, &list) != nil || len(list) > 0) {
-		out = append(out, "the addons "+oneValue(addons)+" (addons can run code)")
+	switch {
+	case isNull(addons):
+	case json.Unmarshal(addons, &list) != nil:
+		out = append(out, "the addons "+string(bytes.TrimSpace(addons))+" (addons can run code)")
+	default:
+		for _, a := range list {
+			out = append(out, "the addon "+string(bytes.TrimSpace(a))+" (addons can run code)")
+		}
 	}
 	return out
 }
@@ -192,15 +200,6 @@ func HeadmatterReasons(theme, addons json.RawMessage) []string {
 func isNull(v json.RawMessage) bool {
 	t := bytes.TrimSpace(v)
 	return len(t) == 0 || string(t) == "null"
-}
-
-// oneValue is a JSON value cut short for a reason line.
-func oneValue(v json.RawMessage) string {
-	s := string(bytes.TrimSpace(v))
-	if len(s) > 80 {
-		s = s[:77] + "..."
-	}
-	return s
 }
 
 var (

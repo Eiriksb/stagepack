@@ -156,10 +156,27 @@ func TestHeadmatterReasons(t *testing.T) {
 		{`"default"`, `["slidev-addon-x"]`, 1},
 		{`"default"`, `"./x"`, 1},
 		{`"./x"`, `["./a"]`, 2},
+		{`"default"`, `["a", "b", "./c"]`, 3},
 	} {
 		if got := HeadmatterReasons(json.RawMessage(c.theme), json.RawMessage(c.addons)); len(got) != c.want {
 			t.Errorf("theme %s, addons %s: %q, want %d reasons", c.theme, c.addons, got, c.want)
 		}
+	}
+}
+
+// The reasons go into the version hash: two values must never give the same
+// reasons, however long they are.
+func TestHeadmatterReasonsKeepWholeValues(t *testing.T) {
+	long := `"` + strings.Repeat("slidev-addon-padding-", 10)
+	a := HeadmatterReasons(nil, json.RawMessage(`[`+long+`x"]`))
+	b := HeadmatterReasons(nil, json.RawMessage(`[`+long+`y"]`))
+	if strings.Join(a, "\n") == strings.Join(b, "\n") {
+		t.Errorf("two addon lists that differ only at the end give the same reasons: %q", a)
+	}
+	a = HeadmatterReasons(json.RawMessage(long+`x"`), nil)
+	b = HeadmatterReasons(json.RawMessage(long+`y"`), nil)
+	if strings.Join(a, "\n") == strings.Join(b, "\n") {
+		t.Errorf("two themes that differ only at the end give the same reasons: %q", a)
 	}
 }
 
