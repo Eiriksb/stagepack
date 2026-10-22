@@ -309,6 +309,36 @@ func TestE2ECodeDeck(t *testing.T) {
 // index.html, is asked about: Slidev finds the talk's copy before the runtime's and puts the script in its
 // index.html into the page. Pack never bundles a runtime package, so the entries are added to the zip after.
 func TestE2EShadowedThemeDeck(t *testing.T) {
+	theme := "vendor/node_modules/@slidev/theme-default/"
+	testInjectedScript(t, "package @slidev/theme-default", "node_modules/@slidev/theme-default/index.html", nil,
+		func(t *testing.T, deckPath string) {
+			addEntries(t, deckPath, map[string]string{
+				theme + "package.json": `{"name": "@slidev/theme-default", "version": "0.25.0"}`,
+				theme + "index.html":   injectedHTML,
+			})
+		})
+}
+
+// A talk with an index.html of its own is asked about: Slidev puts its head and body into the page.
+func TestE2ETalkIndexHTMLDeck(t *testing.T) {
+	testInjectedScript(t, "index.html (Slidev puts it into the page", "index.html", func(t *testing.T, src string) {
+		if err := os.WriteFile(filepath.Join(src, "index.html"), []byte(injectedHTML), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}, nil)
+}
+
+// injectedMarker is what injectedHTML's script sets; testInjectedScript looks for it in the page.
+const (
+	injectedMarker = "stagepack-injected-script-ran"
+	injectedHTML   = "<body><script>window['" + injectedMarker + "'] = 1</script></body>\n"
+)
+
+// testInjectedScript packs testdata/deck (`theme: default`, so nothing else asks) with injectedHTML put in
+// by beforePack (in the source folder) or afterPack (in the deck), at file in the work folder. Headless,
+// the viewer must ask, naming reason, and refuse; with --trust-code the page must hold the script, which
+// shows the reason to ask was real.
+func testInjectedScript(t *testing.T, reason, file string, beforePack, afterPack func(t *testing.T, path string)) {
 	home, rt := linuxBuild(t)
 	workBefore := listDir(t, filepath.Join(rt, "work"))
 	tmp := t.TempDir()
@@ -321,17 +351,17 @@ func TestE2EShadowedThemeDeck(t *testing.T) {
 	if data, err := os.ReadFile(filepath.Join(src, "slides.md")); err != nil || !strings.Contains(string(data), "\ntheme: default\n") {
 		t.Fatalf("testdata/deck/slides.md does not set theme: default (%v)", err)
 	}
-	deckPath := filepath.Join(tmp, "theme"+brand.Ext)
+	if beforePack != nil {
+		beforePack(t, src)
+	}
+	deckPath := filepath.Join(tmp, "injected"+brand.Ext)
 	m, err := pack.Pack(pack.Options{Dir: src, Out: deckPath, Warn: io.Discard})
 	if err != nil {
 		t.Fatal(err)
 	}
-	const marker = "stagepack-shadowed-theme-ran"
-	theme := "vendor/node_modules/@slidev/theme-default/"
-	addEntries(t, deckPath, map[string]string{
-		theme + "package.json": `{"name": "@slidev/theme-default", "version": "0.25.0"}`,
-		theme + "index.html":   "<body><script>window['" + marker + "'] = 1</script></body>\n",
-	})
+	if afterPack != nil {
+		afterPack(t, deckPath)
+	}
 	t.Cleanup(func() { os.Remove(filepath.Join(home, "logs", save.JournalKey(m.ID, deckPath)+".log")) })
 	urlFile := filepath.Join(tmp, "url.txt")
 	env := append(os.Environ(), "BROWSER="+browserScript(t, tmp, urlFile))
@@ -348,7 +378,7 @@ func TestE2EShadowedThemeDeck(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return strings.Contains(string(page), marker)
+		return strings.Contains(string(page), injectedMarker)
 	}
 	readURL := func() string {
 		data, _ := os.ReadFile(urlFile)
@@ -376,7 +406,7 @@ wait:
 	}
 	if cmd.ProcessState == nil {
 		if url := readURL(); url != "" {
-			t.Errorf("opened without asking; the bundled theme's script is in the page: %v", pageHolds(url))
+			t.Errorf("opened without asking; the talk's script is in the page: %v", pageHolds(url))
 		}
 		cmd.Process.Signal(syscall.SIGTERM)
 		select {
@@ -389,15 +419,15 @@ wait:
 	if !errors.As(err, &exit) || exit.ExitCode() != 1 {
 		t.Fatalf("open without --trust-code: %v, want exit 1\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
-	if !strings.Contains(stdout.String(), `"event":"confirm"`) || !strings.Contains(stdout.String(), "package @slidev/theme-default") {
-		t.Errorf("no confirm line naming the bundled @slidev/theme-default:\n%s", stdout.String())
+	if !strings.Contains(stdout.String(), `"event":"confirm"`) || !strings.Contains(stdout.String(), reason) {
+		t.Errorf("no confirm line naming %q:\n%s", reason, stdout.String())
 	}
 	if _, err := os.Stat(urlFile); !os.IsNotExist(err) {
 		t.Errorf("a browser was opened (%v)", err)
 	}
 	// Only this deck's folders: internal/slidev's tests may be using the work folder at the same time.
 	for _, d := range newEntries(listDir(t, filepath.Join(rt, "work")), workBefore) {
-		if _, err := os.Stat(filepath.Join(rt, "work", d, "node_modules", "@slidev", "theme-default", "index.html")); err == nil {
+		if data, err := os.ReadFile(filepath.Join(rt, "work", d, filepath.FromSlash(file))); err == nil && string(data) == injectedHTML {
 			t.Errorf("work folder left: %s", d)
 		}
 	}
@@ -425,7 +455,7 @@ wait:
 	}()
 	waitFor(t, 3*time.Minute, "the browser URL", func() bool { return readURL() != "" })
 	if !pageHolds(readURL()) {
-		t.Error("the page does not hold the bundled theme's script")
+		t.Error("the page does not hold the talk's script")
 	}
 	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
 		t.Fatal(err)

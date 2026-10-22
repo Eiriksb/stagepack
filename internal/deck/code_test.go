@@ -18,6 +18,9 @@ func TestCodeReasons(t *testing.T) {
 		files  map[string]string // other entries' content (package.json files)
 	}{
 		{"plain talk", []string{brand.ManifestName, "slides.md", "style.css", "public/", "public/clip.mp4", "images/a.png"}, plain, nil, nil},
+		{"the talk's index.html, any case", []string{"slides.md", "index.html"}, plain, []string{"index.html (Slidev puts it into the page, scripts and all)"}, nil},
+		{"Index.HTML", []string{"Index.HTML"}, plain, []string{"Index.HTML (Slidev puts it into the page, scripts and all)"}, nil},
+		{"index.html elsewhere is not read", []string{"public/index.html", "docs/index.html", "index.htm"}, plain, nil, nil},
 		{"scripts in public count too", []string{"slides.md", "public/player.js", "public/x.vue", "public/a.css"}, plain, []string{"public/player.js", "public/x.vue"}, nil},
 		{"css-only package", []string{"slides.md", "vendor/node_modules/@fontsource/inter/index.css", "vendor/node_modules/@fontsource/inter/package.json", "vendor/node_modules/@fontsource/inter/files/a.woff2"}, plain, nil, nil},
 		{"vite config", []string{"slides.md", "vite.config.ts"}, plain, []string{"vite.config.ts (configuration that runs as code)"}, nil},

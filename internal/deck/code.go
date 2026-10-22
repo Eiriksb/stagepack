@@ -36,7 +36,9 @@ var configPrefixes = []string{"vite.config", "uno.config", "unocss.config", "pos
 //
 // It counts: config files Vite and UnoCSS load (vite.config*, uno.config*,
 // unocss.config*, and PostCSS's); everything under setup/; any .vue, .js, .ts
-// (and kin), .node or .wasm file, public/ included; each bundled package with
+// (and kin), .node or .wasm file, public/ included; the talk's own index.html
+// at the top, which Slidev puts into the page, scripts and all (with or
+// without a doctype, though Slidev skips one with); each bundled package with
 // such a file, or whose package.json lists addons (once, by name), and each
 // bundled package with the export addon's name in its own (shadowsAddon), or
 // that Slidev or Vite would load instead of the runtime's own or from the talk
@@ -91,6 +93,10 @@ func CodeReasons(names []string, read func(name string) []byte) []string {
 			reasons = append(reasons, name+" (configuration that runs as code)")
 		case strings.HasPrefix(low, "setup/"):
 			reasons = append(reasons, name+" (setup code)")
+		case low == "index.html":
+			// The slides entry is at the top (CheckSlidesEntry), so this is
+			// Slidev's userRoot/index.html.
+			reasons = append(reasons, name+" (Slidev puts it into the page, scripts and all)")
 		case codeExts[path.Ext(low)]:
 			reasons = append(reasons, name)
 		}

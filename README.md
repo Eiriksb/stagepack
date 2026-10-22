@@ -184,6 +184,7 @@ The viewer asks the presenter before it shows a talk that contains code (see "Fo
 
 - files named `vite.config*`, `uno.config*`, `unocss.config*`, `postcss.config*` or `.postcssrc*`;
 - anything under `setup/`;
+- an `index.html` next to the slides file: Slidev puts its head and body into the page, scripts and all;
 - any `.vue`, `.js`, `.mjs`, `.cjs`, `.ts`, `.mts`, `.cts`, `.jsx`, `.tsx`, `.node` or `.wasm` file, also in
   `public/`;
 - a bundled package that holds such a file, or whose `package.json` lists Slidev addons (other packages of only CSS
