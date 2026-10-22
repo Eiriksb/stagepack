@@ -84,10 +84,32 @@ function findStagepack(): string | null {
   return null
 }
 
-// fromThisComputer: the request came over loopback.
+// fromThisComputer: the request came over loopback, for a loopback name, and not through a proxy. A tunnel
+// (`slidev --remote --tunnel`) or a reverse proxy connects over loopback too, but names its own host or adds
+// forwarding headers; a DNS-rebinding page names its own host.
 function fromThisComputer(req: IncomingMessage): boolean {
   const a = req.socket.remoteAddress || ''
-  return a === '::1' || a.startsWith('127.') || a.startsWith('::ffff:127.')
+  if (!(a === '::1' || a.startsWith('127.') || a.startsWith('::ffff:127.')))
+    return false
+  for (const h of ['forwarded', 'x-forwarded-for', 'x-forwarded-host', 'x-real-ip', 'cf-connecting-ip', 'true-client-ip', 'via']) {
+    if (req.headers[h] !== undefined)
+      return false
+  }
+  return isLoopbackHost(req.headers.host)
+}
+
+// isLoopbackHost: host[:port] names this computer: localhost, 127.x.x.x or [::1].
+function isLoopbackHost(host: string | undefined): boolean {
+  if (!host)
+    return false
+  let name: string
+  try {
+    name = new URL(`http://${host}`).hostname
+  }
+  catch {
+    return false
+  }
+  return name === 'localhost' || name === '[::1]' || /^127(?:\.\d{1,3}){3}$/.test(name)
 }
 
 // sameOrigin keeps other web pages from making the browser export the talk: a POST from another
@@ -100,7 +122,8 @@ function sameOrigin(req: IncomingMessage): boolean {
   if (!origin)
     return site === 'same-origin'
   try {
-    return new URL(origin).host === req.headers.host
+    const u = new URL(origin)
+    return u.host === req.headers.host && isLoopbackHost(u.host)
   }
   catch {
     return false
