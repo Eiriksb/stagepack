@@ -337,6 +337,35 @@ func TestPackVendorsScopedPackages(t *testing.T) {
 	}
 }
 
+// The export addon and the npm launcher are never bundled: the runtime has the one, and the other is the
+// viewer's installer (and sets os, which pack refuses). The note doesn't count the addon line as code.
+func TestPackSkipsAddonAndLauncher(t *testing.T) {
+	dir := copyDir(t, fixture)
+	write(t, filepath.Join(dir, "package.json"),
+		`{"devDependencies":{"@slidev/cli":"^53.0.0","`+brand.AddonPkg+`":"^0.2.0","`+brand.AppID+`":"^0.2.0"}}`)
+	write(t, filepath.Join(dir, "node_modules", brand.AddonPkg, "package.json"), `{"name":"`+brand.AddonPkg+`","version":"0.2.0"}`)
+	write(t, filepath.Join(dir, "node_modules", brand.AddonPkg, "custom-nav-controls.vue"), "<template/>")
+	write(t, filepath.Join(dir, "node_modules", brand.AppID, "package.json"), `{"name":"`+brand.AppID+`","version":"0.2.0","os":["linux","win32"]}`)
+	slides, err := os.ReadFile(filepath.Join(dir, "slides.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(dir, "slides.md"), strings.Replace(string(slides), "---\n", "---\naddons: ["+brand.AddonName+"]\n", 1))
+	var warn strings.Builder
+	_, out, err := packTo(t, Options{Dir: dir, Warn: &warn})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name := range entries(openZip(t, out)) {
+		if strings.HasPrefix(name, "vendor/") {
+			t.Errorf("bundled %s", name)
+		}
+	}
+	if strings.Contains(warn.String(), "contains code") {
+		t.Errorf("the export addon noted as code:\n%s", warn.String())
+	}
+}
+
 func TestPackRefusesMissingDependency(t *testing.T) {
 	dir := copyDir(t, fixture)
 	if err := os.RemoveAll(filepath.Join(dir, "node_modules", "fixture-dep")); err != nil {

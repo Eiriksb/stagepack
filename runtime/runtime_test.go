@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strconv"
 	"testing"
+
+	"stagepack/internal/brand"
 )
 
 func TestLockPinsSlidev(t *testing.T) {
@@ -90,5 +92,40 @@ func TestWindowsRuntimeHasWin32Natives(t *testing.T) {
 	}
 	if n == 0 {
 		t.Error("the lock lists no win32-x64 packages; expected the rolldown/oxc/lightningcss bindings")
+	}
+}
+
+// build/addon.sh and build/release.sh name the runtime's folder and the export addon too.
+func TestAddonAndReleaseScriptsAgree(t *testing.T) {
+	for _, f := range []string{"../build/addon.sh", "../build/release.sh"} {
+		sh, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := regexp.MustCompile(`(?m)^major=(\d+)`).FindSubmatch(sh)
+		if m == nil {
+			t.Fatalf("no major= line in %s", f)
+		}
+		if got, _ := strconv.Atoi(string(m[1])); got != Major() {
+			t.Errorf("%s major=%d, runtime.Major() = %d", f, got, Major())
+		}
+	}
+	sh, err := os.ReadFile("../build/addon.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m := regexp.MustCompile(`(?m)^pkg=(\S+)`).FindSubmatch(sh); m == nil || string(m[1]) != brand.AddonPkg {
+		t.Errorf("build/addon.sh pkg= is not %s", brand.AddonPkg)
+	}
+	var pj struct{ Name, License string }
+	data, err := os.ReadFile("../addon/package.json")
+	if err == nil {
+		err = json.Unmarshal(data, &pj)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pj.Name != brand.AddonPkg || pj.License != "MIT" {
+		t.Errorf("addon/package.json: name %q, license %q; want %s, MIT", pj.Name, pj.License, brand.AddonPkg)
 	}
 }

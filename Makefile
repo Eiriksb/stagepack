@@ -103,10 +103,12 @@ $(WIN_RUNTIME):
 
 # dist/linux/stagepack with node/ and runtimes/ beside it: the layout `stagepack open` and the e2e tests expect
 build-linux: $(LINUX_NODE) $(LINUX_RUNTIME)
+	build/addon.sh linux
 	$(MAKE) build OS=linux
 
 # dist/windows/Stagepack-Setup.exe and PRESENTER.txt beside it (the guide to hand over with the installer)
 build-windows: $(WIN_NODE) $(WIN_RUNTIME)
+	build/addon.sh win32
 	$(MAKE) setup
 	cp PRESENTER.txt dist/windows/PRESENTER.txt
 

@@ -47,6 +47,10 @@ func TestReadHeadmatterIntegration(t *testing.T) {
 		{"flow mapping", "---\n{theme: ./x}\n---\n", true},
 		{"addons", "---\naddons:\n  - slidev-addon-x\n---\n", true},
 		{"addons under config", "---\nconfig:\n  addons: [./a]\n---\n", true},
+		{"the export addon", "---\naddons:\n  - stagepack\n---\n", false},
+		{"the export addon by package name", "---\naddons: [slidev-addon-stagepack]\n---\n", false},
+		{"the export addon and another", "---\naddons: [stagepack, slidev-addon-x]\n---\n", true},
+		{"the export addon as a folder", "---\naddons: [./stagepack]\n---\n", true},
 	} {
 		p := filepath.Join(t.TempDir(), "slides.md")
 		if err := os.WriteFile(p, []byte(c.slides), 0o644); err != nil {

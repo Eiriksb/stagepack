@@ -8,6 +8,7 @@
 #             SHA256SUMS                                       of the three
 #             RELEASE_NOTES.md                                 the text of the GitHub release
 #             npm/stagepack-VERSION.tgz                        the npm launcher (npm/), SHA256SUMS inside
+#             npm/slidev-addon-stagepack-VERSION.tgz           the Slidev export addon (addon/)
 #           Offline. The tarball is the same bytes for the same dist/linux and commit.
 #   github  creates the GitHub release vVERSION from dist/release/vVERSION. The commit must be on origin.
 #           Online; it publishes.
@@ -85,10 +86,21 @@ pack() {
 	(cd "$out" && sha256sum "${assets[@]}" >SHA256SUMS)
 	notes >"$out/RELEASE_NOTES.md"
 
-	# The npm package: npm/ with this version and the checksums it checks downloads against.
-	local stage="$out/npm/package"
-	cp -r "$root/npm" "$stage"
-	cp "$out/SHA256SUMS" "$root/LICENSE" "$stage/"
+	# The npm packages: the launcher (npm/) with the checksums it checks downloads against, and the addon.
+	npmpack "$root/npm" "$out/SHA256SUMS"
+	npmpack "$root/addon"
+
+	echo "wrote $out:"
+	(cd "$out" && ls -l "${assets[@]}" SHA256SUMS RELEASE_NOTES.md npm/)
+}
+
+# npmpack packs the npm package in folder $1, with this version, LICENSE and the files $2... added, into $out/npm.
+npmpack() {
+	local src="$1" stage="$out/npm/package"
+	shift
+	rm -rf "$stage"
+	cp -r "$src" "$stage"
+	cp "$root/LICENSE" "$@" "$stage/"
 	node -e '
 		const fs = require("fs"), p = process.argv[1] + "/package.json";
 		const j = JSON.parse(fs.readFileSync(p, "utf8"));
@@ -97,9 +109,6 @@ pack() {
 	' "$stage" "$ver"
 	(cd "$stage" && npm pack --silent --pack-destination "$out/npm" >/dev/null)
 	rm -rf "$stage"
-
-	echo "wrote $out:"
-	(cd "$out" && ls -l "${assets[@]}" SHA256SUMS RELEASE_NOTES.md npm/)
 }
 
 notes() {
@@ -129,6 +138,9 @@ npx stagepack install
 
 Or download \`$tarname.tar.xz\` ($size MB), check it against \`SHA256SUMS\`, unpack it and run
 \`$tarname/stagepack install\`.
+
+**Authors:** \`npm i -D slidev-addon-stagepack\` and \`addons: [stagepack]\` in your talk's headmatter add an
+**Export as .sptx** button to Slidev's nav bar.
 
 Everything installs for the current user only. See the README for details and how to uninstall.
 EOF

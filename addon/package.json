@@ -1,0 +1,28 @@
+{
+  "name": "slidev-addon-stagepack",
+  "version": "0.0.0-dev",
+  "description": "Slidev addon: a button that exports the talk as one .sptx file that Stagepack opens with a double-click, offline.",
+  "keywords": [
+    "slidev-addon",
+    "slidev",
+    "stagepack",
+    "sptx",
+    "offline"
+  ],
+  "homepage": "https://github.com/Eiriksb/stagepack/tree/main/addon#readme",
+  "bugs": "https://github.com/Eiriksb/stagepack/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Eiriksb/stagepack.git",
+    "directory": "addon"
+  },
+  "license": "MIT",
+  "files": [
+    "custom-nav-controls.vue",
+    "setup/",
+    "README.md"
+  ],
+  "engines": {
+    "slidev": ">=53.0.0"
+  }
+}

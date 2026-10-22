@@ -50,6 +50,20 @@ func TestCodeReasons(t *testing.T) {
 			[]string{"package a (bundled with the talk)"},
 			map[string]string{"vendor/node_modules/a/package.json": `{"slidev": {"addons": ["b"]}}`}},
 		{"broken package.json", []string{"slides.md", "package.json"}, plain, []string{"package.json (it can't be read, so its addons can't be checked)"}, map[string]string{"package.json": `{`}},
+		{"package.json listing only the export addon", []string{"slides.md", "package.json"}, plain, nil,
+			map[string]string{"package.json": `{"slidev": {"addons": ["` + brand.AddonName + `", "` + brand.AddonPkg + `"]}, "devDependencies": {"` + brand.AddonPkg + `": "0.2.0"}}`}},
+		{"package.json listing the export addon and another", []string{"slides.md", "package.json"}, plain,
+			[]string{"package.json (it lists Slidev addons, which can run code)"},
+			map[string]string{"package.json": `{"slidev": {"addons": ["` + brand.AddonName + `", "x"]}}`}},
+		{"a bundled package that could stand in for the export addon, whatever it holds", []string{
+			"vendor/node_modules/@slidev/addon-" + brand.AddonName + "/package.json", "vendor/node_modules/@slidev/addon-" + brand.AddonName + "/index.html",
+			"vendor/node_modules/" + brand.AddonPkg + "/styles/index.css", "node_modules/Slidev-Addon-StagePack/index.html",
+			"vendor/node_modules/" + brand.AddonName + "/package.json", "node_modules/ſtagepack/a.css",
+			"vendor/node_modules/slidev-addon-ſtagepack/a.css", "vendor/node_modules/@slidev/addon-slidev-addon-stagepack/a.css",
+			"vendor/node_modules/stage-pack/a.css"}, plain, []string{
+			"package @slidev/addon-" + brand.AddonName + " (bundled with the talk)", "package " + brand.AddonPkg + " (bundled with the talk)",
+			"package " + brand.AddonName + " (bundled with the talk)", "package @slidev/addon-slidev-addon-stagepack (bundled with the talk)"},
+			map[string]string{"vendor/node_modules/" + brand.AddonName + "/package.json": `{}`}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -117,6 +131,16 @@ func TestCodeReasonsFailClosedOnYAML(t *testing.T) {
 		"alias as the key":                        "---\nx: &k theme\n*k : ./x\n---\n",
 		"merge key":                               "---\n<<: *base\ntheme: default\n---\n",
 		"line separator after the plain form":     "---\ntheme: default\u2028theme: ./x\n---\n",
+		"export addon and another":                "---\naddons: [stagepack, ./x]\n---\n",
+		"export addon list going on":              "---\naddons: [stagepack]\n  ./x\n---\n",
+		"export addon block and another":          "---\naddons:\n  - stagepack\n  - ./x\n---\n",
+		"export addon block item going on":        "---\naddons:\n  - stagepack\n    ./x\n---\n",
+		"export addon then other addons":          "---\naddons: [stagepack]\naddons: [./x]\n---\n",
+		"export addon with mismatched quotes":     "---\naddons: [\"stagepack']\n---\n",
+		"export addon as a folder":                "---\naddons: [./stagepack]\n---\n",
+		"export addon below the headmatter":       "---\ntitle: x\n---\n\naddons: [stagepack]\n",
+		"export addon in a flow collection":       "---\nx: [\naddons: [stagepack]\n./x]\n---\n",
+		"export addon block at the end":           "---\naddons:\n---\n  - stagepack\n",
 	} {
 		if got := SlidesReasons("slides.md", slides, true); len(got) == 0 {
 			t.Errorf("%s: not counted as code:\n%q", name, slides)
@@ -125,6 +149,25 @@ func TestCodeReasonsFailClosedOnYAML(t *testing.T) {
 	// The allowed form counts only in the slides file.
 	if got := SlidesReasons("pages/more.md", "---\ntheme: default\n---\n", false); len(got) != 1 {
 		t.Errorf("theme in pages/more.md: %q", got)
+	}
+	if got := SlidesReasons("pages/more.md", "---\naddons: [stagepack]\n---\n", false); len(got) != 1 {
+		t.Errorf("addons in pages/more.md: %q", got)
+	}
+}
+
+// The export addon the runtime bundles, set in one of the two allowed forms, is no reason.
+func TestSlidesReasonsAllowExportAddon(t *testing.T) {
+	for name, slides := range map[string]string{
+		"flow":                 "---\ntheme: default\ntitle: x\naddons: [" + brand.AddonName + "]\n---\n# hi\n",
+		"flow, package name":   "---\naddons: [ '" + brand.AddonPkg + "' ] # export button\ntheme: default\n---\n",
+		"flow, theme after it": "---\naddons: [\"" + brand.AddonName + "\"]\ntheme: default\n---\n",
+		"block":                "---\ntheme: default\naddons:\n  - " + brand.AddonName + "\ntitle: x\n---\n",
+		"block, last key":      "---\naddons:\n  - \"" + brand.AddonPkg + "\"\n---\n",
+		"block with a comment": "---\naddons: # export\n  - " + brand.AddonName + " # button\n---\n",
+	} {
+		if got := SlidesReasons("slides.md", slides, true); len(got) != 0 {
+			t.Errorf("%s: %q", name, got)
+		}
 	}
 }
 
@@ -157,6 +200,14 @@ func TestHeadmatterReasons(t *testing.T) {
 		{`"default"`, `"./x"`, 1},
 		{`"./x"`, `["./a"]`, 2},
 		{`"default"`, `["a", "b", "./c"]`, 3},
+		{`"default"`, `["` + brand.AddonName + `"]`, 0},
+		{`"default"`, `["` + brand.AddonPkg + `"]`, 0},
+		{`"default"`, `["` + brand.AddonName + `", "x"]`, 1},
+		{`"default"`, `["./` + brand.AddonName + `"]`, 1},
+		{`"default"`, `["@slidev/addon-` + brand.AddonName + `"]`, 1},
+		{`"default"`, `["` + strings.ToUpper(brand.AddonName) + `"]`, 1},
+		{`"default"`, `"` + brand.AddonName + `"`, 1},
+		{`"default"`, `[["` + brand.AddonName + `"]]`, 1},
 	} {
 		if got := HeadmatterReasons(json.RawMessage(c.theme), json.RawMessage(c.addons)); len(got) != c.want {
 			t.Errorf("theme %s, addons %s: %q, want %d reasons", c.theme, c.addons, got, c.want)

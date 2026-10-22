@@ -304,6 +304,92 @@ func TestE2ECodeDeck(t *testing.T) {
 	}
 }
 
+// A talk that names the export addon opens without being asked about, also headless where the answer
+// would be no, and the addon the runtime bundles stays out of the way: no endpoint, so no button.
+func TestE2EExportAddonDeck(t *testing.T) {
+	home, _ := linuxBuild(t)
+	tmp := t.TempDir()
+	bin := buildViewer(t, tmp)
+
+	src := filepath.Join(tmp, "src")
+	if err := os.CopyFS(src, os.DirFS(filepath.Join("..", "testdata", "deck"))); err != nil {
+		t.Fatal(err)
+	}
+	slides := filepath.Join(src, "slides.md")
+	data, err := os.ReadFile(slides)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withAddon := strings.Replace(string(data), "\ntitle: ", "\naddons: ["+brand.AddonName+"]\ntitle: ", 1)
+	if withAddon == string(data) {
+		t.Fatal("testdata/deck/slides.md has no title: line to put addons: before")
+	}
+	if err := os.WriteFile(slides, []byte(withAddon), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var notes bytes.Buffer
+	deckPath := filepath.Join(tmp, "addon"+brand.Ext)
+	m, err := pack.Pack(pack.Options{Dir: src, Out: deckPath, Warn: &notes})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(notes.String(), "contains code") {
+		t.Errorf("pack notes the export addon as code:\n%s", notes.String())
+	}
+	t.Cleanup(func() { os.Remove(filepath.Join(home, "logs", save.JournalKey(m.ID, deckPath)+".log")) })
+	urlFile := filepath.Join(tmp, "url.txt")
+
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command(bin, "open", "--headless", "--home", home, deckPath)
+	cmd.Env = append(os.Environ(), "BROWSER="+browserScript(t, tmp, urlFile))
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	exited := make(chan error, 1)
+	go func() { exited <- cmd.Wait() }()
+	defer func() {
+		if cmd.ProcessState == nil {
+			cmd.Process.Signal(syscall.SIGTERM)
+			select {
+			case <-exited:
+			case <-time.After(30 * time.Second):
+				cmd.Process.Kill()
+			}
+		}
+		t.Logf("stdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
+	}()
+	var url string
+	waitFor(t, 3*time.Minute, "the browser URL", func() bool {
+		data, err := os.ReadFile(urlFile)
+		url = strings.TrimSpace(string(data))
+		return err == nil && url != ""
+	})
+	if strings.Contains(stdout.String(), `"event":"confirm"`) {
+		t.Errorf("asked about the export addon:\n%s", stdout.String())
+	}
+	base := url[:strings.Index(url, "/presenter")]
+	resp, err := http.Get(base + "/__stagepack/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if ct := resp.Header.Get("Content-Type"); strings.Contains(ct, "json") {
+		t.Errorf("the export addon answers in the viewer (%s): it should do nothing there", ct)
+	}
+	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-exited:
+		if err != nil {
+			t.Fatalf("the viewer exited with %v", err)
+		}
+	case <-time.After(60 * time.Second):
+		t.Fatal("the viewer did not exit within 60 s of SIGTERM")
+	}
+}
+
 // procsIn lists the pids whose working folder is dir or below it (also once dir is deleted).
 func procsIn(dir string) []string {
 	links, _ := filepath.Glob("/proc/[0-9]*/cwd")

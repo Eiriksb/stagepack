@@ -37,9 +37,12 @@ var configPrefixes = []string{"vite.config", "uno.config", "unocss.config", "pos
 // It counts: config files Vite and UnoCSS load (vite.config*, uno.config*,
 // unocss.config*, and PostCSS's); everything under setup/; any .vue, .js, .ts
 // (and kin), .node or .wasm file, public/ included; each bundled package with
-// such a file, or whose package.json lists addons (once, by name); and any
-// package.json that lists addons, has a PostCSS config or can't be read.
-// Packages of only CSS, fonts and data do not count.
+// such a file, or whose package.json lists addons (once, by name), and each
+// bundled package with the export addon's name in its own, whatever it holds
+// (shadowsAddon); and any package.json that lists addons, has a PostCSS config
+// or can't be read. Packages of only CSS, fonts and data do not count. The
+// export addon (brand.AddonPkg), which the runtime bundles, doesn't count as an
+// addon anywhere.
 //
 // The theme and addons in the slides' headmatter are not looked at here: the
 // viewer asks Slidev's own parser for them (slidev.ReadHeadmatter) and judges
@@ -61,6 +64,10 @@ func CodeReasons(names []string, read func(name string) []byte) []string {
 		// Node_Modules/x/Package.json as node_modules/x/package.json.
 		low := fold(name)
 		pkg, inPkg := packageOf(low)
+		if inPkg && shadowsAddon(pkg) {
+			pkgReason(pkg)
+			continue
+		}
 		if path.Base(low) == "package.json" {
 			// Every one of them: the talk's, a bundled package's, a theme folder's.
 			for _, why := range packageJSONReasons(read(name)) {
@@ -138,9 +145,33 @@ func readPackageJSON(data []byte) (addons, postcss, ok bool) {
 	var slidev map[string]json.RawMessage
 	var list []json.RawMessage
 	if json.Unmarshal(top["slidev"], &slidev) == nil && json.Unmarshal(slidev["addons"], &list) == nil {
-		addons = len(list) > 0
+		for _, a := range list {
+			addons = addons || !isBundledAddon(a)
+		}
 	}
 	return addons, postcss, true
+}
+
+// bundledAddons are the names in addons: that Slidev resolves to the runtime's
+// own export addon (addon/, brand.AddonPkg): the package name and the short
+// name. Slidev tries @slidev/addon-<name> and slidev-addon-<name> before the
+// name itself, so a talk can't put another package in its place without
+// bundling one with the addon's name in its own, which shadowsAddon counts.
+var bundledAddons = map[string]bool{brand.AddonPkg: true, brand.AddonName: true}
+
+// isBundledAddon reports whether an addons: entry (a JSON value) is exactly
+// the name of the runtime's export addon.
+func isBundledAddon(v json.RawMessage) bool {
+	var s string
+	return json.Unmarshal(v, &s) == nil && bundledAddons[s]
+}
+
+// shadowsAddon reports whether a bundled package (its folded name) could be
+// found instead of the runtime's export addon: any package whose name holds
+// the addon's. Such a package counts as code whatever it holds, since an addon
+// can bring more than code files (an index.html, for one).
+func shadowsAddon(pkg string) bool {
+	return strings.Contains(pkg, fold(brand.AddonName))
 }
 
 func hasAnyPrefix(s string, prefixes []string) bool {
@@ -171,8 +202,9 @@ func packageOf(name string) (string, bool) {
 
 // HeadmatterReasons judges the theme and addons Slidev's parser read from the
 // slides' headmatter (JSON values; null or missing when not set). A theme that
-// isn't one the runtime bundles counts, and so do any addons: the runtime
-// bundles none, so each comes from the talk, a folder or a bundled package.
+// isn't one the runtime bundles counts, and so does any addon but the export
+// addon the runtime bundles (bundledAddons): each other one comes from the
+// talk, a folder or a bundled package.
 // Each reason holds its value in full, one per addon: the reasons go into the
 // version hash (workspace.Work.AddCode), so nothing may be cut from them here.
 func HeadmatterReasons(theme, addons json.RawMessage) []string {
@@ -191,7 +223,9 @@ func HeadmatterReasons(theme, addons json.RawMessage) []string {
 		out = append(out, "the addons "+string(bytes.TrimSpace(addons))+" (addons can run code)")
 	default:
 		for _, a := range list {
-			out = append(out, "the addon "+string(bytes.TrimSpace(a))+" (addons can run code)")
+			if !isBundledAddon(a) {
+				out = append(out, "the addon "+string(bytes.TrimSpace(a))+" (addons can run code)")
+			}
 		}
 	}
 	return out
@@ -209,6 +243,12 @@ var (
 	// plainTheme is the one allowed form of a theme line; group 2 is the name.
 	// A # starts a comment only after a blank: `default#x` is all one value.
 	plainTheme = regexp.MustCompile(`^theme:[ \t]*(["']?)([A-Za-z0-9@/._-]+)(["']?)(?:[ \t]+#.*)?[ \t]*$`)
+	// plainAddons and bareAddons + addonItem are the allowed forms of an addons
+	// line, a list of one name: `addons: [name]`, or `addons:` and `  - name` on
+	// the next line. Group 2 is the name.
+	plainAddons = regexp.MustCompile(`^addons:[ \t]*\[[ \t]*(["']?)([A-Za-z0-9@/._-]+)(["']?)[ \t]*\](?:[ \t]+#.*)?[ \t]*$`)
+	bareAddons  = regexp.MustCompile(`^addons:(?:[ \t]+#.*)?[ \t]*$`)
+	addonItem   = regexp.MustCompile(`^[ \t]+-[ \t]+(["']?)([A-Za-z0-9@/._-]+)(["']?)(?:[ \t]+#.*)?[ \t]*$`)
 	// anchorOrAlias is a YAML anchor, alias or merge key, which can make a key
 	// "theme" without spelling it: `x: &k theme` then `*k : ./folder`.
 	anchorOrAlias = regexp.MustCompile(`(?:^|[\s{\[,:?-])[&*][^\s]|<<`)
@@ -240,8 +280,10 @@ var (
 //     runtime bundles (or none), on a line of its own in the --- block at the
 //     top of the slides file: `theme: default`. Nothing before it in the file
 //     may open a { or [ collection, and the line after it must start a new key.
-//   - Addons always count: the runtime bundles none, so each one comes from the
-//     talk (a folder, or a bundled package).
+//   - Addons count, but for the export addon the runtime bundles (bundledAddons),
+//     set the same way, in one of two forms: `addons: [stagepack]` on one line,
+//     or `addons:` and `  - stagepack` on the next. Every other addon comes from
+//     the talk (a folder, or a bundled package).
 //   - Any other line in any Markdown file that YAML could read as a theme: or
 //     addons: key counts, and so does any quoted key with an escape in it (which
 //     could spell "theme" without the letters) and any explicit "? key".
@@ -265,13 +307,22 @@ func SlidesReasons(name, text string, isEntry bool) []string {
 	var out []string
 	flow := false // a { or [ has been seen in the file so far
 	for i, l := range lines {
+		plain := !odd && i > 0 && i < headEnd && !flow // where an allowed form may be
 		switch {
 		case escapedKey.MatchString(l) || explicitKey.MatchString(l) || (i < headEnd && anchorOrAlias.MatchString(l)):
 			out = append(out, "a YAML key in "+name+" (written in a way that can't be checked)")
 		case themeKey.MatchString(l):
 			m := plainTheme.FindStringSubmatch(l)
-			if !odd && i > 0 && i < headEnd && !flow && m != nil && m[1] == m[3] && bundledThemes[m[2]] && newKeyFollows(lines[i+1:]) {
+			if plain && m != nil && m[1] == m[3] && bundledThemes[m[2]] && newKeyFollows(lines[i+1:]) {
 				break // theme: default
+			}
+			if m := plainAddons.FindStringSubmatch(l); plain && m != nil && m[1] == m[3] && bundledAddons[m[2]] && newKeyFollows(lines[i+1:]) {
+				continue // addons: [stagepack]; its [ is closed on the line, so flow stays as it is
+			}
+			if bareAddons.MatchString(l) && plain && i+1 < headEnd {
+				if m := addonItem.FindStringSubmatch(lines[i+1]); m != nil && m[1] == m[3] && bundledAddons[m[2]] && newKeyFollows(lines[i+2:]) {
+					break // addons:\n  - stagepack
+				}
 			}
 			key := themeKey.FindStringSubmatch(l)[1]
 			if key == "addons" {

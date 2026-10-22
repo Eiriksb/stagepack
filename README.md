@@ -160,6 +160,23 @@ the Inter and JetBrains Mono fonts), so a talk without extra dependencies is jus
 
 `stagepack open talk.sptx` does what a double-click does.
 
+### Export from Slidev (the addon)
+
+[`slidev-addon-stagepack`](addon/) adds an **Export as .sptx** button (a box icon) to Slidev's nav bar, in play
+mode and in the presenter's toolbar. It is there only while you run `slidev` (the dev server). One click runs
+`stagepack pack` on the talk and the browser downloads the `.sptx` file; pack's notes (fonts, code) are shown
+next to the button. It packs with the installed Stagepack, so install that first (see "Install").
+
+```bash
+npm i -D slidev-addon-stagepack
+```
+
+Then name it in the headmatter of `slides.md`, as `addons: [stagepack]` on one line, or `addons:` with
+`  - stagepack` on the next. The viewer's runtime bundles its own copy of the addon, where it does nothing, so a
+talk that names it opens there without the "contains code" question. That holds for exactly this addon
+(`stagepack` or `slidev-addon-stagepack`); any other addon still counts. `stagepack pack` never bundles your copy
+of it. Details are in [addon/README.md](addon/README.md).
+
 ### Code in a talk
 
 The viewer asks the presenter before it shows a talk that contains code (see "For presenters"), and
@@ -171,16 +188,20 @@ The viewer asks the presenter before it shows a talk that contains code (see "Fo
   `public/`;
 - a bundled package that holds such a file, or whose `package.json` lists Slidev addons (packages of only CSS
   and fonts, like Fontsource, don't count);
-- any theme but the one the runtime bundles, and any addons (the runtime bundles none);
-- `"slidev": {"addons": [...]}` or a `"postcss"` key in any `package.json`, or a `package.json` that isn't
-  valid JSON.
+- any theme but the one the runtime bundles, and any addon but the export addon the runtime bundles
+  (`stagepack`, `slidev-addon-stagepack`; see above);
+- a bundled package with `stagepack` in its name, whatever it holds: Slidev would find it instead of the
+  runtime's export addon;
+- `"slidev": {"addons": [...]}` listing any other addon, or a `"postcss"` key, in any `package.json`, or a
+  `package.json` that isn't valid JSON.
 
 Slidev reads the theme and addons from the headmatter with a full YAML parser, and YAML has many ways to write
 a key or carry a value over lines. So the viewer doesn't guess: before it asks, it runs Slidev's own parser
 (the runtime's `@slidev/parser`, with the bundled Node, on the unpacked slides file only) and judges what that
 returns. Nothing from the talk runs for this. The only theme that needs no question is the bundled one
-(`default`, `none` or `@slidev/theme-default`). Any other theme and any addons count, also those set under
-`config:`, and so does a headmatter that can't be read. A changed theme or addon list asks again.
+(`default`, `none` or `@slidev/theme-default`), and the only addon is the bundled export addon. Any other theme
+and any other addon count, also those set under `config:`, and so does a headmatter that can't be read. A
+changed theme or addon list asks again.
 
 `stagepack pack` has no Node of its own, so its note uses a rougher check: it allows only `theme: default` on its
 own line in the `---` block at the top of the slides file, and names any other `theme:` or `addons:` line, in
@@ -253,6 +274,7 @@ it is in the file's version info and in the Settings → Apps entry. Builds with
    | `SHA256SUMS` | of the three above |
    | `RELEASE_NOTES.md` | the text of the GitHub release |
    | `npm/stagepack-0.1.0.tgz` | the npm launcher (`npm/`), with this version and `SHA256SUMS` inside |
+   | `npm/slidev-addon-stagepack-0.1.0.tgz` | the Slidev export addon (`addon/`), with this version |
 
    Node and the runtime are reused from `dist/` when they are there (they are pinned by
    `build/versions.env` and `runtime/package-lock.json`); `make node runtime OS=linux` (and `OS=win32`) makes
@@ -263,9 +285,10 @@ it is in the file's version info and in the Settings → Apps entry. Builds with
    the files against `SHA256SUMS` and runs `gh release create v0.1.0`, which tags the commit on GitHub. The
    install script uses the latest release, and `releases/latest/download/Stagepack-Setup.exe` always links
    to the latest installer.
-3. Publish the npm package, logged in as its owner (`npm login`): `npm publish
-   dist/release/v0.1.0/npm/stagepack-0.1.0.tgz`. The launcher downloads from the GitHub release `v0.1.0`, so
-   publish it only after step 2.
+3. Publish the npm packages, logged in as their owner (`npm login`): `npm publish
+   dist/release/v0.1.0/npm/stagepack-0.1.0.tgz` and `npm publish
+   dist/release/v0.1.0/npm/slidev-addon-stagepack-0.1.0.tgz`. The launcher downloads from the GitHub release
+   `v0.1.0`, so publish it only after step 2.
 
 To use the Linux build on this machine: `make build-linux`, then `dist/linux/stagepack install` (see "On Linux"
 above). Run it again after a new build to update the installed copy; a talk must not be open meanwhile.
@@ -281,6 +304,7 @@ node/node[.exe]                                   Node 24 (build/versions.env)
 runtimes/53/package.json, package-lock.json       the pinned runtime (runtime/)
 runtimes/53/pnpm-workspace.yaml                   marks runtimes/53/ as Vite's workspace root
 runtimes/53/node_modules/@slidev/cli/bin/slidev.mjs
+runtimes/53/node_modules/slidev-addon-stagepack/  the export addon (addon/, copied in by build/addon.sh), inert here
 runtimes/53/work/<id>/                            one opened talk, unpacked
 journal/<key>.json                                note edits not yet in the .sptx file (kept by uninstall)
 trusted.json                                      talks allowed to run their code: id and hash of that version

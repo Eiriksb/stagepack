@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"stagepack/internal/brand"
 )
 
 // The test binary doubles as a fake Slidev: Start runs it as "Node", and
@@ -251,7 +253,7 @@ func TestChildEnv(t *testing.T) {
 		return n
 	}
 	env := childEnv([]string{"A=1", "BROWSER=firefox", "NODE_OPTIONS=--max-old-space-size=4096"})
-	if has(env, "A=1") != 1 || has(env, "BROWSER=none") != 1 || has(env, "BROWSER=firefox") != 0 {
+	if has(env, "A=1") != 1 || has(env, "BROWSER=none") != 1 || has(env, "BROWSER=firefox") != 0 || has(env, brand.ViewerEnv+"=1") != 1 {
 		t.Fatalf("env = %q", env)
 	}
 	if has(env, "NODE_OPTIONS=--max-old-space-size=4096 --dns-result-order=ipv4first") != 1 {

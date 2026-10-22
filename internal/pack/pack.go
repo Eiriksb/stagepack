@@ -43,8 +43,9 @@ var (
 //go:embed favicon.svg
 var faviconSVG []byte
 
-// skipPackages are never vendored: the Slidev CLI is the runtime's, and the export tools need a browser.
-var skipPackages = map[string]bool{"@slidev/cli": true, "playwright-chromium": true, "playwright": true}
+// skipPackages are never vendored: the Slidev CLI and the export addon are the runtime's, the npm
+// launcher (brand.AppID) is the viewer's installer, and the export tools need a browser.
+var skipPackages = map[string]bool{"@slidev/cli": true, brand.AddonPkg: true, brand.AppID: true, "playwright-chromium": true, "playwright": true}
 
 // item is one file going into the zip: either a file on disk or in-memory data.
 type item struct {

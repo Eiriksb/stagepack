@@ -21,3 +21,4 @@ rm -rf "$dir/node_modules"
 cp "$root/runtime/package.json" "$root/runtime/package-lock.json" "$root/runtime/pnpm-workspace.yaml" "$dir/"
 (cd "$dir" && npm ci --no-audit --no-fund "${flags[@]}")
 node "$here/licenses.mjs" "$dir"
+"$here/addon.sh" "$1"

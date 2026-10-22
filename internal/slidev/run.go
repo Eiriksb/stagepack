@@ -15,6 +15,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"stagepack/internal/brand"
 )
 
 // Config says how to run Slidev.
@@ -151,9 +153,10 @@ func Start(ctx context.Context, c Config, port int) (*Server, error) {
 
 const ipv4First = "--dns-result-order=ipv4first"
 
-// childEnv is base plus BROWSER=none and NODE_OPTIONS with --dns-result-order=ipv4first
-// added to any existing value. That makes Node resolve "localhost" to 127.0.0.1 first on
-// every OS, so Slidev's "localhost" bind is IPv4 and 127.0.0.1 URLs always work.
+// childEnv is base plus BROWSER=none, brand.ViewerEnv=1 (the export addon then stays out of
+// the way) and NODE_OPTIONS with --dns-result-order=ipv4first added to any existing value.
+// That makes Node resolve "localhost" to 127.0.0.1 first on every OS, so Slidev's
+// "localhost" bind is IPv4 and 127.0.0.1 URLs always work.
 func childEnv(base []string) []string {
 	const key = "NODE_OPTIONS="
 	env := make([]string, 0, len(base)+2)
@@ -163,6 +166,7 @@ func childEnv(base []string) []string {
 		case strings.HasPrefix(strings.ToUpper(kv), key): // env names are case-insensitive on Windows
 			opts = kv[len(key):]
 		case kv == "BROWSER" || strings.HasPrefix(kv, "BROWSER="):
+		case strings.HasPrefix(strings.ToUpper(kv), brand.ViewerEnv+"="):
 		default:
 			env = append(env, kv)
 		}
@@ -170,7 +174,7 @@ func childEnv(base []string) []string {
 	if !strings.Contains(opts, ipv4First) {
 		opts = strings.TrimSpace(opts + " " + ipv4First)
 	}
-	return append(env, "BROWSER=none", key+opts)
+	return append(env, "BROWSER=none", brand.ViewerEnv+"=1", key+opts)
 }
 
 // probes are tried in turn each round. Slidev binds "localhost", which may be
