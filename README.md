@@ -1,5 +1,7 @@
 # Stagepack
 
+[![Stagepack: your presentation, in one file. Click to watch the 23-second video](assets/readme/launch.jpg)](assets/readme/launch.mp4)
+
 Stagepack packs a [Slidev](https://sli.dev) presentation into one file, `presentation.sptx`, that opens with a double-click.
 The viewer brings its own Node and a pinned Slidev, so the presenter needs nothing installed: no Node, no npm.
 It works offline when the presentation bundles its fonts (see "Fonts" below). The presentation opens in Slidev's presenter
