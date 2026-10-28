@@ -157,12 +157,21 @@ Options:
 | `--entry slides.md` | the slides file, relative to `DIR` |
 | `--title T` | presentation title (default: the headmatter title, else the folder name) |
 | `--exclude PREFIX` | leave out a path prefix (whole path components), repeatable; nothing there is read, so a link there may lead nowhere |
+| `--only-used-public` | pack only the files in `public/` the presentation names by path (see below) |
 | `--meta k=v` | free-form manifest metadata, repeatable |
 
 Packing leaves out of the file whatever the pinned runtime already provides (Slidev itself, its default theme,
 the Inter and JetBrains Mono fonts), so a presentation without extra dependencies is just your slides and media. Other
 `node_modules` your presentation needs are included. If the presentation has no local favicon, a bundled one
 (`public/stagepack-favicon.svg`) is added so the viewer makes no network request. Your folder is never modified.
+
+`--only-used-public` is for a folder whose `public/` holds more than this presentation uses, such as two
+presentations sharing one folder. A file in `public/` goes in only when the presentation names its path
+(`/clips/intro.mp4` for `public/clips/intro.mp4`, also written with `%20` for a space): in the slides file, in a
+slides file it imports with `src:`, in its components, styles and config, or in a page in `public/` that is
+itself kept. Other markdown in the folder, such as another presentation's slides or a README, does not count.
+A path the slides put together at run time (`'/clips/' + name`) can't be seen, so pack lists every file it
+left out: check that none of them is needed.
 
 `stagepack open presentation.sptx` does what a double-click does.
 

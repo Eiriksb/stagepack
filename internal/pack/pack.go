@@ -10,9 +10,11 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -24,13 +26,14 @@ import (
 
 // Options says what to pack and where to put it.
 type Options struct {
-	Dir     string            // the Slidev project folder
-	Out     string            // the deck file (brand.Ext) to write
-	Entry   string            // slides file relative to Dir; default "slides.md"
-	Title   string            // overrides the title from the entry's headmatter
-	Exclude []string          // path prefixes (relative to Dir, whole components) left out
-	Meta    map[string]string // free-form manifest metadata
-	Warn    io.Writer         // notes and warnings; nil discards them
+	Dir            string            // the Slidev project folder
+	Out            string            // the deck file (brand.Ext) to write
+	Entry          string            // slides file relative to Dir; default "slides.md"
+	Title          string            // overrides the title from the entry's headmatter
+	Exclude        []string          // path prefixes (relative to Dir, whole components) left out
+	OnlyUsedPublic bool              // pack only the files in public/ the talk names by path (usedPublic)
+	Meta           map[string]string // free-form manifest metadata
+	Warn           io.Writer         // notes and warnings; nil discards them
 }
 
 const defaultEntry = "slides.md"
@@ -130,6 +133,11 @@ func Pack(o Options) (deck.Manifest, error) {
 			items = append(items, item{name: faviconPath, data: faviconSVG, mod: time.Now()})
 		}
 		fmt.Fprintf(warn, "note: no local favicon in %s; using the bundled %s so the viewer makes no network request\n", entry, faviconURL)
+	}
+	if o.OnlyUsedPublic {
+		var left []item
+		items, left = usedPublic(items, entry)
+		noteLeftOut(warn, left)
 	}
 	if !fontsOffline(string(entryText)) {
 		fmt.Fprintf(warn, "warning: %s does not set fonts: provider: none, so Slidev loads the talk's fonts from "+
@@ -334,6 +342,104 @@ func danglingLink(p string, err error) (string, bool) {
 		return "", false
 	}
 	return target, true
+}
+
+// usedPublic keeps the files in public/ that the talk names by their URL path ("/clips/a.mp4" for
+// public/clips/a.mp4, also with %20 for a space). The talk is its entry, the slide files it imports
+// (`src: pages/intro.md`, followed from file to file), its text files outside public/ that are not markdown
+// (components, styles, setup, config) and the public text files kept this way (a page in public/ that names
+// its pictures). Other markdown, such as a second talk's slides in the same folder or a README, does not
+// count. Any other file in public/ is left out. A path put together at run time ('/clips/' + name) is not
+// seen, so its file is left out too: that is why it is opt-in, and why the caller lists what was left out.
+func usedPublic(items []item, entry string) (kept, left []item) {
+	type text struct{ name, data string }
+	var texts []text
+	pub := map[string]item{}
+	md := map[string]item{} // markdown outside public/ other than the entry: counted once imported
+	for _, it := range items {
+		switch rel, ok := strings.CutPrefix(it.name, "public/"); {
+		case ok:
+			pub[rel] = it
+		case it.name != entry && strings.EqualFold(path.Ext(it.name), ".md"):
+			md[it.name] = it
+		case it.name == entry || deck.EntryMethod(it.name) == zip.Deflate:
+			texts = append(texts, text{it.name, string(itemData(it))})
+		}
+	}
+	used := map[string]bool{}
+	for len(texts) > 0 {
+		t := texts[0]
+		texts = texts[1:]
+		if strings.EqualFold(path.Ext(t.name), ".md") {
+			for _, m := range srcLine.FindAllStringSubmatch(t.data, -1) {
+				name := path.Join(path.Dir(t.name), m[1]) // relative to the file, or from the folder with a leading /
+				if strings.HasPrefix(m[1], "/") {
+					name = path.Clean(strings.TrimPrefix(m[1], "/"))
+				}
+				if it, ok := md[name]; ok {
+					delete(md, name)
+					texts = append(texts, text{name, string(itemData(it))})
+				}
+			}
+		}
+		for rel, it := range pub {
+			if used[rel] || !namesPath(t.data, rel) {
+				continue
+			}
+			used[rel] = true
+			if deck.EntryMethod(it.name) == zip.Deflate {
+				texts = append(texts, text{it.name, string(itemData(it))})
+			}
+		}
+	}
+	for _, it := range items {
+		if rel, ok := strings.CutPrefix(it.name, "public/"); ok && !used[rel] {
+			left = append(left, it)
+		} else {
+			kept = append(kept, it)
+		}
+	}
+	return kept, left
+}
+
+// srcLine is a slide's `src:` import in its frontmatter; the path ends before a quote, a space or a #range.
+var srcLine = regexp.MustCompile(`(?m)^[ \t]*src:[ \t]*["']?([^"'#\s]+)`)
+
+// namesPath reports whether text names the public file rel by its URL path, as written or %-escaped.
+func namesPath(text, rel string) bool {
+	return strings.Contains(text, "/"+rel) || strings.Contains(text, "/"+(&url.URL{Path: rel}).EscapedPath())
+}
+
+func itemData(it item) []byte {
+	if it.src == "" {
+		return it.data
+	}
+	data, _ := os.ReadFile(it.src)
+	return data
+}
+
+// noteLeftOut names the files usedPublic left out (the first 20) and their size.
+func noteLeftOut(warn io.Writer, left []item) {
+	if len(left) == 0 {
+		return
+	}
+	var size int64
+	var names []string
+	for _, it := range left {
+		size += int64(len(it.data))
+		if st, err := os.Stat(it.src); it.src != "" && err == nil {
+			size += st.Size()
+		}
+		if len(names) < 20 {
+			names = append(names, it.name)
+		}
+	}
+	if len(left) > len(names) {
+		names = append(names, fmt.Sprintf("and %d more", len(left)-len(names)))
+	}
+	fmt.Fprintf(warn, "note: --only-used-public left out %d files in public/ (%.1f MB) that the presentation does not "+
+		"name by their path; a path the slides put together at run time is not seen, so check that none of these "+
+		"is needed:\n  %s\n", len(left), float64(size)/1e6, strings.Join(names, "\n  "))
 }
 
 // writeZip writes the manifest and items to out+".tmp" and renames it to out.

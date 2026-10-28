@@ -245,6 +245,61 @@ func TestPackRefusesDanglingLink(t *testing.T) {
 	}
 }
 
+func TestPackOnlyUsedPublic(t *testing.T) {
+	dir := copyDir(t, fixture)
+	slides, err := os.ReadFile(filepath.Join(dir, "slides.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(dir, "components", "Pic.vue"), `<template><img src="/clips/in-vue.png"></template>`)
+	write(t, filepath.Join(dir, "style.css"), "body { background: url(/bg.jpg); }\n")
+	write(t, filepath.Join(dir, "public", "page.html"), `<img src="/from-page.png">`)
+	// a slide file the entry pulls in counts; another talk's slides and a README in the folder do not
+	write(t, filepath.Join(dir, "pages", "more.md"), "# More\n\n<img src=\"/from-import.png\">\n\n---\nsrc: /pages/last.md\n---\n")
+	write(t, filepath.Join(dir, "pages", "last.md"), "# Last\n\n<img src=\"/from-nested-import.png\">\n")
+	write(t, filepath.Join(dir, "slides.md"), string(slides)+"\n---\n\n<video src=\"/used.mp4\" />\n\n"+
+		"<iframe src=\"/page.html\" />\n\n![a picture](/with%20space.png)\n\n---\nsrc: ./pages/more.md\n---\n\n"+
+		"The other talk is other-talk.md.\n")
+	write(t, filepath.Join(dir, "other-talk.md"), "# Other\n\n<video src=\"/other.mp4\" />\n")
+	write(t, filepath.Join(dir, "README.md"), "The clips: /unused.mp4\n")
+	for _, f := range []string{"used.mp4", "from-page.png", "with space.png", "clips/in-vue.png", "bg.jpg",
+		"from-import.png", "from-nested-import.png", "unused.mp4", "clips/unused.png", "other.mp4"} {
+		write(t, filepath.Join(dir, "public", filepath.FromSlash(f)), "media "+f)
+	}
+	var warn bytes.Buffer
+	_, out, err := packTo(t, Options{Dir: dir, OnlyUsedPublic: true, Warn: &warn})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := entries(openZip(t, out))
+	for _, f := range []string{"used.mp4", "page.html", "from-page.png", "with space.png", "clips/in-vue.png",
+		"bg.jpg", "from-import.png", "from-nested-import.png", "stagepack-favicon.svg"} {
+		if got["public/"+f] == nil {
+			t.Errorf("public/%s was left out, but the presentation names it", f)
+		}
+	}
+	for _, f := range []string{"unused.mp4", "clips/unused.png", "clip.mp4", "other.mp4"} {
+		if got["public/"+f] != nil {
+			t.Errorf("public/%s was packed, but nothing names it", f)
+		}
+		if !strings.Contains(warn.String(), "public/"+f) {
+			t.Errorf("the note does not name public/%s: %s", f, warn.String())
+		}
+	}
+	if !strings.Contains(warn.String(), "left out 4 files in public/") {
+		t.Errorf("note = %s", warn.String())
+	}
+
+	// without the option every file in public/ goes in
+	_, out, err = packTo(t, Options{Dir: dir, Warn: io.Discard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := entries(openZip(t, out)); got["public/unused.mp4"] == nil {
+		t.Error("public/unused.mp4 left out without OnlyUsedPublic")
+	}
+}
+
 func TestPackSkipsToolFolders(t *testing.T) {
 	dir := copyDir(t, fixture)
 	write(t, filepath.Join(dir, ".git", "HEAD"), "ref")

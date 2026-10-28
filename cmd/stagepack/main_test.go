@@ -44,6 +44,28 @@ func TestPackCommand(t *testing.T) {
 	}
 }
 
+func TestPackCommandOnlyUsedPublic(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "t"+brand.Ext)
+	var so, se bytes.Buffer
+	// the fixture's slides do not name public/clip.mp4
+	if code := run([]string{"pack", "../../testdata/deck", "-o", out, "--only-used-public"}, &so, &se); code != 0 {
+		t.Fatalf("exit %d: %s", code, se.String())
+	}
+	zr, err := zip.OpenReader(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer zr.Close()
+	for _, f := range zr.File {
+		if f.Name == "public/clip.mp4" {
+			t.Error("public/clip.mp4 packed with --only-used-public")
+		}
+	}
+	if !strings.Contains(se.String(), "public/clip.mp4") {
+		t.Errorf("stderr does not name the left-out file: %s", se.String())
+	}
+}
+
 func TestPackCommandUsage(t *testing.T) {
 	for _, args := range [][]string{{"pack"}, {"pack", "dir"}, {"pack", "-o", "x"}, {"pack", "a", "b", "-o", "x"}, {"pack", "d", "-o", "x", "--meta", "nokey"}} {
 		var so, se bytes.Buffer
