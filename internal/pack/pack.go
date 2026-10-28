@@ -6,8 +6,10 @@ import (
 	"crypto/rand"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -238,7 +240,8 @@ func checkSlidev(dir string, pj packageJSON, warn io.Writer) (string, error) {
 }
 
 // collectProject lists the project's files: everything except node_modules, .git, a top-level dist and
-// .slidev, the excluded prefixes and the output file. Symlinks are followed. .gitignore is not honoured.
+// .slidev, the excluded prefixes and the output file. Symlinks are followed; one that leads nowhere is an error
+// unless it is excluded. .gitignore is not honoured.
 func collectProject(dir, out string, exclude []string) ([]item, error) {
 	var ex []string
 	for _, e := range exclude {
@@ -279,8 +282,16 @@ func collectProject(dir, out string, exclude []string) ([]item, error) {
 				childRel = name
 			}
 			childAbs := filepath.Join(abs, name)
+			// An excluded path is never looked at, so a link there need not lead anywhere.
+			if excluded(childRel) {
+				continue
+			}
 			st, err := os.Stat(childAbs) // follows symlinks
 			if err != nil {
+				if target, dangling := danglingLink(childAbs, err); dangling {
+					return fmt.Errorf("pack: %s is a link to %s, which is not here; leave it out with --exclude %s",
+						childRel, target, childRel)
+				}
 				return fmt.Errorf("pack: %s: %w", childRel, err)
 			}
 			if st.IsDir() {
@@ -289,15 +300,13 @@ func collectProject(dir, out string, exclude []string) ([]item, error) {
 					continue
 				case rel == "" && (name == "dist" || name == ".slidev"):
 					continue
-				case excluded(childRel):
-					continue
 				}
 				if err := walk(childAbs, childRel, ancestors); err != nil {
 					return err
 				}
 				continue
 			}
-			if !st.Mode().IsRegular() || excluded(childRel) || childAbs == out || childAbs == out+".tmp" {
+			if !st.Mode().IsRegular() || childAbs == out || childAbs == out+".tmp" {
 				continue
 			}
 			items = append(items, item{name: childRel, src: childAbs, mod: st.ModTime()})
@@ -309,6 +318,22 @@ func collectProject(dir, out string, exclude []string) ([]item, error) {
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].name < items[j].name })
 	return items, nil
+}
+
+// danglingLink reports whether p, which failed to stat with err, is a symlink whose target does not exist, and
+// that target.
+func danglingLink(p string, err error) (string, bool) {
+	if !errors.Is(err, fs.ErrNotExist) {
+		return "", false
+	}
+	if lst, lerr := os.Lstat(p); lerr != nil || lst.Mode()&fs.ModeSymlink == 0 {
+		return "", false
+	}
+	target, rerr := os.Readlink(p)
+	if rerr != nil {
+		return "", false
+	}
+	return target, true
 }
 
 // writeZip writes the manifest and items to out+".tmp" and renames it to out.
