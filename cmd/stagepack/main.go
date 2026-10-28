@@ -75,7 +75,7 @@ type listFlag []string
 func (l *listFlag) String() string     { return strings.Join(*l, ",") }
 func (l *listFlag) Set(v string) error { *l = append(*l, v); return nil }
 
-var packUsage = "usage: " + cmdName + " pack DIR -o OUT [--entry slides.md] [--title T] [--exclude PREFIX]... [--meta k=v]..."
+var packUsage = "usage: " + cmdName + " pack DIR -o OUT [--entry slides.md] [--title T] [--exclude PREFIX]... [--only-used-public] [--meta k=v]..."
 
 func runPack(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("pack", flag.ContinueOnError)
@@ -83,10 +83,12 @@ func runPack(args []string, stdout, stderr io.Writer) int {
 	fs.Usage = func() { fmt.Fprintln(stderr, packUsage) }
 	var out, entry, title string
 	var exclude, meta listFlag
+	var onlyUsed bool
 	fs.StringVar(&out, "o", "", "output "+brand.Ext+" file")
 	fs.StringVar(&entry, "entry", "slides.md", "slides file, relative to DIR")
 	fs.StringVar(&title, "title", "", "talk title (default: title in the slides' headmatter, else the folder name)")
 	fs.Var(&exclude, "exclude", "leave out this path prefix (relative to DIR); repeatable")
+	fs.BoolVar(&onlyUsed, "only-used-public", false, "pack only the files in public/ the presentation names by path")
 	fs.Var(&meta, "meta", "manifest metadata key=value; repeatable")
 
 	// DIR may come before or after the flags.
@@ -118,7 +120,8 @@ func runPack(args []string, stdout, stderr io.Writer) int {
 		}
 		md[k] = v
 	}
-	m, err := pack.Pack(pack.Options{Dir: dirs[0], Out: out, Entry: entry, Title: title, Exclude: exclude, Meta: md, Warn: stderr})
+	m, err := pack.Pack(pack.Options{Dir: dirs[0], Out: out, Entry: entry, Title: title, Exclude: exclude,
+		OnlyUsedPublic: onlyUsed, Meta: md, Warn: stderr})
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", brand.Name, err)
 		return 1
