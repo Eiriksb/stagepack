@@ -213,6 +213,38 @@ func TestPackExclude(t *testing.T) {
 	}
 }
 
+func TestPackExcludesDanglingLink(t *testing.T) {
+	dir := copyDir(t, fixture)
+	missing := filepath.Join(t.TempDir(), "gone.mp4")
+	if err := os.Symlink(missing, filepath.Join(dir, "public", "gone.mp4")); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(dir, "public", "notes.txt"), "excluded file")
+	_, out, err := packTo(t, Options{Dir: dir, Exclude: []string{"public/gone.mp4", "public/notes.txt"}, Warn: io.Discard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := entries(openZip(t, out))
+	for _, name := range []string{"public/gone.mp4", "public/notes.txt"} {
+		if got[name] != nil {
+			t.Errorf("excluded entry %s present", name)
+		}
+	}
+}
+
+func TestPackRefusesDanglingLink(t *testing.T) {
+	dir := copyDir(t, fixture)
+	missing := filepath.Join(t.TempDir(), "gone.mp4")
+	if err := os.Symlink(missing, filepath.Join(dir, "public", "gone.mp4")); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := packTo(t, Options{Dir: dir, Warn: io.Discard})
+	want := "pack: public/gone.mp4 is a link to " + missing + ", which is not here; leave it out with --exclude public/gone.mp4"
+	if err == nil || err.Error() != want {
+		t.Fatalf("err = %v, want %q", err, want)
+	}
+}
+
 func TestPackSkipsToolFolders(t *testing.T) {
 	dir := copyDir(t, fixture)
 	write(t, filepath.Join(dir, ".git", "HEAD"), "ref")
