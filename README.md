@@ -156,7 +156,7 @@ Options:
 | `-o OUT` | the `.sptx` file to write |
 | `--entry slides.md` | the slides file, relative to `DIR` |
 | `--title T` | presentation title (default: the headmatter title, else the folder name) |
-| `--exclude PREFIX` | leave out a path prefix (whole path components), repeatable |
+| `--exclude PREFIX` | leave out a path prefix (whole path components), repeatable; nothing there is read, so a link there may lead nowhere |
 | `--only-used-public` | pack only the files in `public/` the presentation names by path (see below) |
 | `--meta k=v` | free-form manifest metadata, repeatable |
 
