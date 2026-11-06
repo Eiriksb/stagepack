@@ -6,10 +6,12 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -46,6 +48,18 @@ func fake(mode string) {
 		_ = os.WriteFile(out+".pid", []byte(strconv.Itoa(child.Process.Pid)), 0o644)
 		println3(`{"event":"start","slides":2}`)
 		time.Sleep(time.Minute)
+	case "term":
+		ch := make(chan os.Signal, 1)
+		signal.Notify(ch, syscall.SIGTERM)
+		_ = os.WriteFile(out+".partial", []byte("x"), 0o644)
+		println3(`{"event":"start","slides":2}`)
+		<-ch
+		os.Exit(0)
+	case "longline":
+		w := bufio.NewWriter(os.Stdout)
+		w.WriteString(`{"event":"notice","text":"` + strings.Repeat("x", 5<<20) + `"}` + "\n")
+		w.WriteString(`{"event":"done","path":"x.pptx"}` + "\n")
+		w.Flush()
 	case "sleep":
 		time.Sleep(time.Minute)
 	}
@@ -183,4 +197,50 @@ func running(pid int) bool {
 	}
 	_, err := os.FindProcess(pid) // on Windows this fails once the process is gone
 	return err == nil
+}
+
+func TestRunCancelIsNotSuccessEvenIfTheExporterExitsCleanly(t *testing.T) {
+	cmd, out := fakeCmd(t, "term")
+	ctx, cancel := context.WithCancel(context.Background())
+	started := make(chan struct{}, 1)
+	errc := make(chan error, 1)
+	go func() {
+		errc <- Run(ctx, cmd, out, func(e Event) {
+			if e.Event == "start" {
+				started <- struct{}{}
+			}
+		})
+	}()
+	select {
+	case <-started:
+	case <-time.After(10 * time.Second):
+		t.Fatal("no start event")
+	}
+	time.Sleep(200 * time.Millisecond) // let the helper install its SIGTERM handler
+	cancel()
+	select {
+	case err := <-errc:
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("err = %v, want context.Canceled", err)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("Run did not return after cancel")
+	}
+	if _, serr := os.Stat(out + ".partial"); serr == nil {
+		t.Error(".partial left behind")
+	}
+}
+
+func TestRunOverlongLineIsAnErrorAndDoesNotHang(t *testing.T) {
+	cmd, out := fakeCmd(t, "longline")
+	errc := make(chan error, 1)
+	go func() { errc <- Run(context.Background(), cmd, out, func(Event) {}) }()
+	select {
+	case err := <-errc:
+		if err == nil || !strings.Contains(err.Error(), "too long") {
+			t.Errorf("err = %v, want an error naming the overlong line", err)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("Run hung on an overlong line")
+	}
 }

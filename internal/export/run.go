@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -137,12 +138,16 @@ func Run(ctx context.Context, cmd *exec.Cmd, out string, onEvent func(Event)) (e
 	}()
 
 	var failure string
+	sawDone := false
 	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 64*1024), 4*1024*1024)
 	for sc.Scan() {
 		var ev Event
 		if json.Unmarshal(sc.Bytes(), &ev) != nil || ev.Event == "" {
 			continue
+		}
+		if ev.Event == "done" {
+			sawDone = true
 		}
 		if ev.Event == "error" {
 			failure = ev.Message
@@ -151,17 +156,28 @@ func Run(ctx context.Context, cmd *exec.Cmd, out string, onEvent func(Event)) (e
 			onEvent(ev)
 		}
 	}
+	scanErr := sc.Err()
+	if scanErr != nil {
+		// Keep reading so the exporter is not stuck on a full pipe and can finish.
+		_, _ = io.Copy(io.Discard, stdout)
+	}
 	waitErr := cmd.Wait()
 	proc.cleanup() // anything the leader left behind
 	close(exited)
 	<-watched
 
+	if ctx.Err() != nil && !sawDone {
+		return ctx.Err() // cancelled, even if the exporter exited 0 while stopping
+	}
+	if scanErr != nil {
+		if errors.Is(scanErr, bufio.ErrTooLong) {
+			return errors.New("the exporter printed a progress line that is too long")
+		}
+		return fmt.Errorf("reading the exporter's progress: %w", scanErr)
+	}
 	if waitErr == nil {
 		clean = true
 		return nil
-	}
-	if ctx.Err() != nil {
-		return ctx.Err()
 	}
 	switch {
 	case failure != "":
