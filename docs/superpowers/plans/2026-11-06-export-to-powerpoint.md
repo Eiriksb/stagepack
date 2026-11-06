@@ -371,3 +371,21 @@ In `test/convert.test.mjs`: after converting the kitchen-sink fixture into an em
 - [ ] **Step 2:** `runtime/package.json`: `"slidev-pptx-export": "<published version>"`; remove `runtime/vendor/`; `npm install --package-lock-only`; `make build-linux build-windows`.
 - [ ] **Step 3:** Run `go test ./... && make licenses-go` and repeat Task 15 Step 2. Expected: PASS, same results.
 - [ ] **Step 4:** Commit `Runtime: slidev-pptx-export <version>`; push `claude/export-pptx`; open the Stagepack PR. The body says what was checked (Linux end to end, GNOME right-click as the user reported it, desktop PowerPoint as the user reported it) and what wasn't (Stagepack on a real Windows machine, if still not done).
+
+### Task 18: Use the browser already on the computer
+
+Added during execution, after the user decided Stagepack bundles no browser (see the design's "Who decided what"). Runs before Task 7 and Task 15.
+
+**Files:**
+- Modify: `internal/export/run.go` (`PathsFor`), `internal/export/export.go`, `internal/export/*_test.go`, `README.md`
+
+**Interfaces:**
+- Consumes: `browser.FindAppBrowser(goos string, getenv func(string) string, lookPath func(string) (string, bool)) (string, bool)` — check its exact signature in `internal/browser/appwindow.go`.
+- Produces: `Paths.Browser` is the path `FindAppBrowser` returns, or empty when none is found; `Options` gains `FindBrowser func() (string, bool)` (default: `FindAppBrowser` with `runtime.GOOS`, `os.Getenv`, `exec.LookPath`); `var ErrNoBrowser`. With no browser, `Export` stops before taking the lock's work (before unpacking), shows `Error` with "Exporting to PowerPoint needs Chrome, Edge or Chromium. Install one and try again." on Linux and "Exporting to PowerPoint needs Microsoft Edge or Chrome." on Windows, and returns `ErrNoBrowser`; `stagepack export-pptx` maps it to exit code 5.
+
+- [ ] **Step 1: Write the failing tests:** `TestExportUsesTheBrowserItFinds` (the fake `Run` sees `SLIDEV_PPTX_BROWSER` set to the found path); `TestExportWithoutABrowserSaysWhatToInstall` (no browser → `ErrNoBrowser`, the Linux sentence, nothing unpacked, no lock left, `Run` never called); `TestPathsForLeavesBrowserEmpty`; in `cmd/stagepack`: `ErrNoBrowser` → exit 5.
+- [ ] **Step 2: Run** `go test ./internal/export/ ./cmd/stagepack/` — Expected: FAIL.
+- [ ] **Step 3: Implement.** `Command` doesn't set `SLIDEV_PPTX_BROWSER` when the path is empty.
+- [ ] **Step 4: Run** `go test ./... && GOOS=windows go vet ./...` — Expected: PASS.
+- [ ] **Step 5:** README: "For presenters" says the export needs Chrome, Edge or a Chromium that isn't a snap (Windows has Edge), and what happens without one; the exit code list gains 5; Layout has no browser folder.
+- [ ] **Step 6: Commit** `Export: use the Chrome, Edge or Chromium already on the computer`.
