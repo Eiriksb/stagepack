@@ -8,6 +8,6 @@
     "@slidev/cli": "53.0.0",
     "@slidev/theme-default": "0.25.0",
     "playwright-core": "1.64.1",
-    "slidev-pptx-export": "file:vendor/slidev-pptx-export-0.4.0-dev.tgz"
+    "slidev-pptx-export": "0.5.0"
   }
 }
