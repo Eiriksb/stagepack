@@ -67,6 +67,9 @@ func Command(p Paths, j Job) *exec.Cmd {
 	args := []string{p.CLI, j.Slides, j.Out, "--render"}
 	if j.Animations {
 		args = append(args, "--animations")
+	} else {
+		// The editable export stays editable when a deck's pptx.config.mjs turns animations on.
+		args = append(args, "--no-animations")
 	}
 	args = append(args, "--progress", "json")
 	cmd := exec.Command(p.Node, args...)

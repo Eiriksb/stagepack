@@ -109,6 +109,8 @@ func TestCommandArgsAndEnv(t *testing.T) {
 		want := "/n/node /r/cli.mjs /w/slides.md /o/deck.pptx --render"
 		if anim {
 			want += " --animations"
+		} else {
+			want += " --no-animations" // wins over a deck's config that turns animations on
 		}
 		want += " --progress json"
 		if args != want {
