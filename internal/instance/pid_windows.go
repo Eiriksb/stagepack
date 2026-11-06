@@ -8,9 +8,10 @@ import (
 
 const stillActive = 259 // STILL_ACTIVE
 
-// pidRunning opens the process and checks it has not exited. A process that exists but
-// refuses access still counts as running.
-func pidRunning(pid int) bool {
+// PIDRunning reports whether a process with this PID runs: it opens the process and
+// checks it has not exited. A process that exists but refuses access still counts as
+// running.
+func PIDRunning(pid int) bool {
 	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
 	if err != nil {
 		return errors.Is(err, windows.ERROR_ACCESS_DENIED)

@@ -66,23 +66,6 @@ func (p *procCtl) stop(exited <-chan struct{}, grace time.Duration) error {
 // cleanup closes the job once the leader is gone, ending any leftovers.
 func (p *procCtl) cleanup() { p.closeJob() }
 
-const stillActive = 259 // STILL_ACTIVE
-
-// pidRunning opens the process and checks it has not exited. A process that
-// exists but refuses access still counts as running.
-func pidRunning(pid int) bool {
-	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
-	if err != nil {
-		return errors.Is(err, windows.ERROR_ACCESS_DENIED)
-	}
-	defer windows.CloseHandle(h)
-	var code uint32
-	if err := windows.GetExitCodeProcess(h, &code); err != nil {
-		return false
-	}
-	return code == stillActive
-}
-
 // reveal shows path selected in an Explorer window, without waiting. The
 // command line is written out, as Explorer reads /select,"<path>" and not
 // the quoting Go would give the whole argument.

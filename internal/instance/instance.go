@@ -191,7 +191,7 @@ func (h *Handle) Release() {
 // on the same deck. A record without an address is an instance still starting, and counts
 // while it is young.
 func Alive(r Record) bool {
-	if r.PID <= 0 || !pidRunning(r.PID) {
+	if r.PID <= 0 || !PIDRunning(r.PID) {
 		return false
 	}
 	base := r.BaseURL

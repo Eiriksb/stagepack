@@ -20,10 +20,8 @@ import (
 	"stagepack/internal/app"
 	"stagepack/internal/brand"
 	"stagepack/internal/browser"
-	"stagepack/internal/deck"
 	"stagepack/internal/instance"
 	"stagepack/internal/slidev"
-	"stagepack/internal/trust"
 	"stagepack/internal/ui"
 	"stagepack/internal/workspace"
 	slidevrt "stagepack/runtime"
@@ -91,7 +89,7 @@ func (notTrusted) Error() string {
 
 func (notTrusted) Is(target error) bool { return target == app.ErrNotTrusted }
 
-// readHeadmatter is slidev.ReadHeadmatter; tests replace it.
+// readHeadmatter is what the code check runs Slidev's parser with (app.CodeCheck); tests replace it.
 var readHeadmatter = slidev.ReadHeadmatter
 
 const maxNotes = 3 // notices the finished box shows
@@ -186,42 +184,31 @@ func Export(ctx context.Context, o Options) (Result, error) {
 	box.Update(tracker.Step())
 
 	// 4. The code it brought along runs only with the person's yes, given here
-	// or when it was opened: the same reasons, version hash and trusted list.
+	// or when it was opened (app.CodeCheck).
 	paths := PathsFor(home, o.GOOS)
-	slides := filepath.Join(work.Dir, work.Manifest.Entry)
-	if hm, err := readHeadmatter(rctx, paths.Node, rtDir, slides); err != nil {
-		log.Printf("check the headmatter of %s: %v", deckPath, err)
-		work.AddCode("the slides' headmatter (it couldn't be checked)")
-	} else {
-		work.AddCode(deck.HeadmatterReasons(hm.Theme, hm.Addons, hm.PWA)...)
-	}
-	if rctx.Err() != nil {
-		return Result{}, ErrCancelled
-	}
-	if work.HasCode() && !o.TrustCode {
-		title := work.Manifest.Title
-		if title == "" {
-			title = file
-		}
-		store := trust.Store{Path: filepath.Join(home, trust.FileName)}
-		if !store.Trusted(work.Manifest.ID, work.Hash) {
-			box.Close()
-			if !d.Confirm(brand.Name, app.CodeQuestion(file, title, work.Code)) {
-				log.Printf("%s not exported: its code was not allowed to run", deckPath)
-				return Result{}, ErrNotTrusted
+	check := app.CodeCheck{Home: home, Node: paths.Node, RuntimeDir: rtDir, TrustCode: o.TrustCode, ReadHeadmatter: readHeadmatter,
+		Ask: func(question string) bool {
+			if rctx.Err() != nil {
+				return false // cancelled while unpacking: there is nothing to ask about
 			}
-			if err := store.Remember(work.Manifest.ID, work.Hash, title); err != nil {
-				log.Printf("remember that %s may run its code: %v", deckPath, err)
+			box.Close()
+			if !d.Confirm(brand.Name, question) {
+				return false
 			}
 			box = show()
-		}
-	}
+			return true
+		}}
+	allowed := check.Allow(rctx, &work, deckPath)
 	if rctx.Err() != nil {
 		return Result{}, ErrCancelled
+	}
+	if !allowed {
+		log.Printf("%s not exported: its code was not allowed to run", deckPath)
+		return Result{}, ErrNotTrusted
 	}
 
 	// 5. Run the exporter; what it says for people goes to the log.
-	cmd := Command(paths, Job{Slides: slides, Out: out, Animations: o.Animations})
+	cmd := Command(paths, Job{Slides: filepath.Join(work.Dir, work.Manifest.Entry), Out: out, Animations: o.Animations})
 	logDir := filepath.Join(home, "logs")
 	lf, err := openLog(filepath.Join(logDir, "export-"+instance.Key(deckPath)+".log"), deckPath, out)
 	if err != nil {
@@ -344,7 +331,7 @@ func takeOver(p string) bool {
 	case age > staleLock:
 	case perr != nil && age < 10*time.Second:
 		return false
-	case perr == nil && pid > 0 && pidRunning(pid):
+	case perr == nil && pid > 0 && instance.PIDRunning(pid):
 		return false
 	}
 	// Moved aside first: of two exports taking over at once, the one that

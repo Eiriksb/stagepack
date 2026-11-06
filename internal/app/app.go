@@ -211,22 +211,27 @@ func Open(ctx context.Context, o Options) error {
 	if m.Title != "" {
 		s.title = m.Title
 	}
-	// 3a. The theme and addons Slidev will load, as its own parser reads them.
-	if hm, err := readHeadmatter(s.ctx, s.nodePath(), s.rtDir, filepath.Join(work.Dir, m.Entry)); err != nil {
-		log.Printf("check the headmatter of %s: %v", deckPath, err)
-		work.AddCode("the slides' headmatter (it couldn't be checked)")
-	} else {
-		work.AddCode(deck.HeadmatterReasons(hm.Theme, hm.Addons, hm.PWA)...)
-	}
+	// 3a. Code the talk brought along, the theme and addons its headmatter names
+	// included, runs as this user once Slidev starts: ask first, once for each
+	// version of the talk.
+	check := CodeCheck{Home: home, Node: s.nodePath(), RuntimeDir: s.rtDir, TrustCode: o.TrustCode,
+		Ask: func(question string) bool {
+			s.opened()
+			if !s.ui.Confirm(brand.Name, question) {
+				return false
+			}
+			s.opened = sync.OnceFunc(s.ui.Opening(name)) // starting still takes a while
+			return true
+		}}
+	allowed := check.Allow(s.ctx, &work, deckPath)
 	s.work = work
-	// 3b. Code the talk brought along runs as this user once Slidev starts: ask
-	// first, once for each version of the talk.
+	if !allowed {
+		log.Printf("%s not opened: its code was not allowed to run", deckPath)
+		workspace.Remove(work)
+		h.Release()
+		return ErrNotTrusted
+	}
 	if work.HasCode() {
-		if !s.allowCode(name) {
-			workspace.Remove(work)
-			h.Release()
-			return ErrNotTrusted
-		}
 		// The question may have been up for longer than a claim counts as starting, and
 		// another launch of the talk may have taken it over meanwhile: that one shows it.
 		if err := h.Renew(); errors.Is(err, instance.ErrNotOwner) {
@@ -268,27 +273,56 @@ func Open(ctx context.Context, o Options) error {
 	return s.err
 }
 
-// allowCode reports whether the talk's code may run: it is in the trusted list
-// in this version, or the person says yes now (which adds it to the list).
-// name is the talk's file name, for the "Opening" box shown again after a yes.
-func (s *session) allowCode(name string) bool {
-	if s.o.TrustCode {
+// CodeCheck decides whether a talk's code may run, in the same way when it is
+// opened and when it is exported: the same reasons, version hash, question and
+// trusted list.
+type CodeCheck struct {
+	Home       string // the viewer's folder, which holds the trusted list
+	Node       string // the node program, which runs Slidev's own parser on the headmatter
+	RuntimeDir string // the runtime holding that parser
+	// TrustCode allows the code without asking, and without adding the talk to
+	// the trusted list.
+	TrustCode bool
+	// Ask puts the question to the person and reports a yes. It is called only
+	// for a talk with code that isn't trusted in this version.
+	Ask func(question string) bool
+	// ReadHeadmatter stands in for slidev.ReadHeadmatter in tests.
+	ReadHeadmatter func(ctx context.Context, node, runtimeDir, slidesPath string) (slidev.Headmatter, error)
+}
+
+// Allow adds to w the theme and addons its headmatter names that count as
+// code, as Slidev's own parser reads them (a headmatter that can't be read
+// counts as code), and reports whether w's code may run: it brings none,
+// TrustCode is set, the trusted list has this version of it, or Ask says yes
+// to CodeQuestion, which adds it to the list. deckPath is the talk's file.
+func (c CodeCheck) Allow(ctx context.Context, w *workspace.Work, deckPath string) bool {
+	read := c.ReadHeadmatter
+	if read == nil {
+		read = readHeadmatter
+	}
+	if hm, err := read(ctx, c.Node, c.RuntimeDir, filepath.Join(w.Dir, w.Manifest.Entry)); err != nil {
+		log.Printf("check the headmatter of %s: %v", deckPath, err)
+		w.AddCode("the slides' headmatter (it couldn't be checked)")
+	} else {
+		w.AddCode(deck.HeadmatterReasons(hm.Theme, hm.Addons, hm.PWA)...)
+	}
+	if !w.HasCode() || c.TrustCode {
 		return true
 	}
-	w := s.work
-	store := trust.Store{Path: filepath.Join(s.home, trust.FileName)}
+	title := w.Manifest.Title
+	if title == "" {
+		title = filepath.Base(deckPath)
+	}
+	store := trust.Store{Path: filepath.Join(c.Home, trust.FileName)}
 	if store.Trusted(w.Manifest.ID, w.Hash) {
 		return true
 	}
-	s.opened()
-	if !s.ui.Confirm(brand.Name, CodeQuestion(filepath.Base(s.deckPath), s.title, w.Code)) {
-		log.Printf("%s not opened: its code was not allowed to run", s.deckPath)
+	if !c.Ask(CodeQuestion(filepath.Base(deckPath), title, w.Code)) {
 		return false
 	}
-	if err := store.Remember(w.Manifest.ID, w.Hash, s.title); err != nil {
-		log.Printf("remember that %s may run its code: %v", s.deckPath, err)
+	if err := store.Remember(w.Manifest.ID, w.Hash, title); err != nil {
+		log.Printf("remember that %s may run its code: %v", deckPath, err)
 	}
-	s.opened = sync.OnceFunc(s.ui.Opening(name)) // starting still takes a while
 	return true
 }
 
