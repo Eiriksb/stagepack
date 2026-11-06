@@ -202,6 +202,16 @@ func saveBox(title, suggest, filterName, ext string) (string, bool, error) {
 // Confirm asks a yes/no question and reports whether the answer is yes.
 func Confirm(title, msg string) bool { return confirmBox(title, msg) }
 
+// ConfirmDefaultNo asks a yes/no question with No the default, as the tray's
+// Confirm does (the same as Confirm here).
+func ConfirmDefaultNo(title, msg string) bool { return confirmBox(title, msg) }
+
+// SaveAs asks for a file to save to, starting at suggest and offering files
+// ending in ext. ok is false when cancelled.
+func SaveAs(title, suggest, filterName, ext string) (path string, ok bool, err error) {
+	return saveBox(title, suggest, filterName, ext)
+}
+
 // Notice shows msg and returns when it is closed.
 func Notice(title, msg string) { infoBox(title, msg) }
 

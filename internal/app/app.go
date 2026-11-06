@@ -281,7 +281,7 @@ func (s *session) allowCode(name string) bool {
 		return true
 	}
 	s.opened()
-	if !s.ui.Confirm(brand.Name, codeQuestion(filepath.Base(s.deckPath), s.title, w.Code)) {
+	if !s.ui.Confirm(brand.Name, CodeQuestion(filepath.Base(s.deckPath), s.title, w.Code)) {
 		log.Printf("%s not opened: its code was not allowed to run", s.deckPath)
 		return false
 	}
@@ -292,10 +292,10 @@ func (s *session) allowCode(name string) bool {
 	return true
 }
 
-// codeQuestion is the text of the question asked before a talk's code runs.
-// The title and reasons come from the file, so they are shown on one line
-// each and cut short.
-func codeQuestion(file, title string, reasons []string) string {
+// CodeQuestion is the text of the question asked before a talk's code runs,
+// when it is opened and when it is exported (internal/export). The title and
+// reasons come from the file, so they are shown on one line each and cut short.
+func CodeQuestion(file, title string, reasons []string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%q (%s) contains code. It runs on this computer, with access to your files, as soon as the talk is shown:\n\n",
 		oneLine(title, 80), oneLine(file, 80))

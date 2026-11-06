@@ -3,6 +3,7 @@ package export
 import (
 	"errors"
 	"os/exec"
+	"path/filepath"
 	"syscall"
 	"time"
 )
@@ -37,3 +38,20 @@ func (p *procCtl) stop(exited <-chan struct{}, grace time.Duration) error {
 
 // cleanup kills what is left of the group once its leader is gone.
 func (p *procCtl) cleanup() { _ = syscall.Kill(-p.pgid, syscall.SIGKILL) }
+
+// pidRunning uses signal 0, which delivers nothing but tells whether the
+// process exists; EPERM means it exists and belongs to someone else.
+func pidRunning(pid int) bool {
+	err := syscall.Kill(pid, 0)
+	return err == nil || errors.Is(err, syscall.EPERM)
+}
+
+// reveal opens the folder holding path in the file manager, without waiting.
+func reveal(path string) error {
+	cmd := exec.Command("xdg-open", filepath.Dir(path))
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	go cmd.Wait() // reap it; its exit status does not matter
+	return nil
+}
