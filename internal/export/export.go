@@ -292,7 +292,7 @@ func Export(ctx context.Context, o Options) (Result, error) {
 			err = errors.New("the exporter ended without finishing the file")
 		}
 		log.Printf("export %s: %v", deckPath, err)
-		return fail(failureText(file, filepath.Base(out), logDir, err.Error()), fmt.Errorf("export %s: %w", file, err))
+		return fail(failureText(o.GOOS, file, filepath.Base(out), logDir, err.Error()), fmt.Errorf("export %s: %w", file, err))
 	}
 	if err != nil {
 		log.Printf("export %s: done, then %v", deckPath, err) // the file is complete
@@ -488,13 +488,15 @@ func openLog(p, deckPath, out string) (*os.File, error) {
 
 // failureText is the one sentence a failed export shows. The exporter renames
 // its file into place at the end, which Windows refuses while PowerPoint has
-// the file there open.
-func failureText(file, name, logDir, msg string) string {
+// the file there open: only that failure, only on Windows, says so. Every
+// failure says where the log is.
+func failureText(goos, file, name, logDir, msg string) string {
 	low := strings.ToLower(msg)
-	for _, s := range []string{"ebusy", "eperm", "resource busy", "operation not permitted", "being used by another process"} {
-		if strings.Contains(low, s) {
-			return fmt.Sprintf("Couldn't export %s: %s may be open in PowerPoint; close it and try again.", file, name)
-		}
+	renameRefused := strings.Contains(low, "rename") && strings.Contains(low, ".partial") &&
+		(strings.Contains(low, "ebusy") || strings.Contains(low, "eperm") || strings.Contains(low, "resource busy") ||
+			strings.Contains(low, "operation not permitted") || strings.Contains(low, "being used by another process"))
+	if goos == "windows" && renameRefused {
+		return fmt.Sprintf("Couldn't export %s: %s may be open in PowerPoint; close it and try again. The log is in %s.", file, name, logDir)
 	}
 	return fmt.Sprintf("Couldn't export %s: %s. The log is in %s.", file, firstLine(msg), logDir)
 }

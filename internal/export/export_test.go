@@ -738,18 +738,33 @@ func TestExportFailureIsOneSentence(t *testing.T) {
 }
 
 func TestExportFailureSaysTheFileMayBeOpenInPowerPoint(t *testing.T) {
-	for _, msg := range []string{
-		"EBUSY: resource busy or locked, rename 'talk.pptx.partial' -> 'talk.pptx'",
-		"EPERM: operation not permitted, rename 'talk.pptx.partial' -> 'talk.pptx'",
-		"The process cannot access the file because it is being used by another process.",
+	rename := func(code string) string {
+		return code + ": operation not permitted, rename 'C:\\talks\\talk.pptx.partial' -> 'C:\\talks\\talk.pptx'"
+	}
+	for _, tc := range []struct {
+		goos, msg string
+		openIn    bool
+	}{
+		{"windows", rename("EPERM"), true},
+		{"windows", "EBUSY: resource busy or locked, rename 'talk.pptx.partial' -> 'talk.pptx'", true},
+		{"windows", "EPERM: operation not permitted, open 'C:\\Users\\a\\profile\\lock'", false},
+		{"windows", "The process cannot access the file because it is being used by another process.", false},
+		{"linux", rename("EPERM"), false},
+		{"linux", "Operation not permitted", false},
 	} {
-		h := newHarness(t, fails(msg))
-		if _, err := Export(context.Background(), h.options(false)); err == nil {
+		h := newHarness(t, fails(tc.msg))
+		o := h.options(false)
+		o.GOOS = tc.goos
+		if _, err := Export(context.Background(), o); err == nil {
 			t.Fatal("no error")
 		}
-		want := "Couldn't export talk" + brand.Ext + ": talk.pptx may be open in PowerPoint; close it and try again."
+		logs := filepath.Join(h.home, "logs")
+		want := "Couldn't export talk" + brand.Ext + ": " + firstLine(tc.msg) + ". The log is in " + logs + "."
+		if tc.openIn {
+			want = "Couldn't export talk" + brand.Ext + ": talk.pptx may be open in PowerPoint; close it and try again. The log is in " + logs + "."
+		}
 		if !slices.Equal(h.d.errs, []string{want}) {
-			t.Errorf("%s: errors %q, want %q", msg, h.d.errs, want)
+			t.Errorf("%s %q: errors %q, want %q", tc.goos, tc.msg, h.d.errs, want)
 		}
 	}
 }
@@ -1022,6 +1037,7 @@ func TestExportFailureOnlyOnStderrSaysTheFileMayBeOpenInPowerPoint(t *testing.T)
 	t.Setenv(fakeEnv, "stderr")
 	t.Setenv(fakeStderrEnv, "Error: EBUSY: resource busy or locked, rename 'talk.pptx.partial' -> 'talk.pptx'")
 	o := h.options(false)
+	o.GOOS = "windows"
 	o.Run = func(ctx context.Context, cmd *exec.Cmd, out string, onEvent func(Event)) error {
 		cmd.Path = os.Args[0] // the test binary as the exporter, with the session's own stderr
 		return Run(ctx, cmd, out, onEvent)
@@ -1029,7 +1045,7 @@ func TestExportFailureOnlyOnStderrSaysTheFileMayBeOpenInPowerPoint(t *testing.T)
 	if _, err := Export(context.Background(), o); err == nil {
 		t.Fatal("no error")
 	}
-	want := "Couldn't export talk" + brand.Ext + ": talk.pptx may be open in PowerPoint; close it and try again."
+	want := "Couldn't export talk" + brand.Ext + ": talk.pptx may be open in PowerPoint; close it and try again. The log is in " + filepath.Join(h.home, "logs") + "."
 	if !slices.Equal(h.d.errs, []string{want}) {
 		t.Errorf("errors %q, want %q", h.d.errs, want)
 	}
