@@ -63,6 +63,16 @@ func Confirm(title, msg string) bool {
 	return messageBoxButtons(title, msg, windows.MB_YESNO|windows.MB_ICONQUESTION) == idYes
 }
 
+// ConfirmDefaultNo asks a yes/no question as a warning with No the default,
+// as the tray's Confirm does.
+func ConfirmDefaultNo(title, msg string) bool { return confirmBox(title, msg) }
+
+// SaveAs asks for a file to save to, starting at suggest and offering files
+// ending in ext. ok is false when cancelled.
+func SaveAs(title, suggest, filterName, ext string) (path string, ok bool, err error) {
+	return saveBox(title, suggest, filterName, ext)
+}
+
 // Notice shows msg with an OK button and returns when it is closed.
 func Notice(title, msg string) { messageBox(title, msg, windows.MB_ICONINFORMATION) }
 

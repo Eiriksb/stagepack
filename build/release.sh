@@ -4,12 +4,19 @@
 #           tag vVERSION, if there is one, is this commit. Offline.
 #   pack    dist/release/vVERSION/ from dist/linux and dist/windows (`make release` builds those first):
 #             Stagepack-Setup.exe, PRESENTER.txt                the Windows installer and its guide
-#             stagepack-VERSION-linux-x64.tar.xz               dist/linux (program, node/, runtimes/) and LICENSE
-#             SHA256SUMS                                       of the three
+#             stagepack-VERSION-linux-x64.tar.xz               dist/linux (program, node/, runtimes/, ffmpeg/) and
+#                                                              LICENSE
+#             ffmpeg-*-linux64-gpl-*.tar.xz, ffmpeg-*-win64-*  the bundled ffmpeg's archives, as downloaded
+#             FFmpeg-*.tar.gz, FFmpeg-Builds-*.tar.gz,         ffmpeg's source: its own, BtbN's build scripts, and the
+#               ffmpeg-*-libraries-source.tar.xz               libraries linked in (build/programs.tsv), from .cache/dl
+#                                                              (`make sources`)
+#             SHA256SUMS                                       of all of the above
 #             RELEASE_NOTES.md                                 the text of the GitHub release
 #             npm/stagepack-VERSION.tgz                        the npm launcher (npm/), SHA256SUMS inside
 #             npm/slidev-addon-stagepack-VERSION.tgz           the Slidev export addon (addon/)
-#           Offline. The tarball is the same bytes for the same dist/linux and commit.
+#           Offline. The tarball is the same bytes for the same dist/linux and commit. ffmpeg's archives and
+#           sources are mirrored because BtbN prunes old builds, and the GPL asks for the source beside the
+#           binaries.
 #   github  creates the GitHub release vVERSION from dist/release/vVERSION. The commit must be on origin.
 #           Online; it publishes.
 # PRERELEASE=1 (at pack) adds a pre-release note to the release text. It does not set GitHub's pre-release
@@ -20,6 +27,8 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(dirname "$here")"
 repo=Eiriksb/stagepack
 major=53 # runtime.Major(); a test checks the two agree
+# shellcheck source=versions.env
+. "$here/versions.env"
 
 cmd="${1:-}"
 ver="${2:-}"
@@ -31,6 +40,13 @@ tag="v$ver"
 out="$root/dist/release/$tag"
 tarname="stagepack-$ver-linux-x64"
 assets=(Stagepack-Setup.exe PRESENTER.txt "$tarname.tar.xz")
+# the bundled ffmpeg as downloaded, and its sources (build/fetch.sh names them so in .cache/dl)
+mirrored=(
+	"${FFMPEG_URL_LINUX_X64##*/}" "${FFMPEG_URL_WIN_X64##*/}"
+	"FFmpeg-${FFMPEG_COMMIT}.tar.gz" "FFmpeg-Builds-${FFMPEG_BUILDS_COMMIT}.tar.gz"
+	"ffmpeg-${FFMPEG_VERSION}-libraries-source.tar.xz"
+)
+assets+=("${mirrored[@]}")
 
 die() { echo "$*" >&2; exit 1; }
 
@@ -61,24 +77,42 @@ winstamped() {
 pack() {
 	cd "$root"
 	local lin="$root/dist/linux" win="$root/dist/windows"
-	for f in "$lin/stagepack" "$lin/node/bin/node" "$lin/runtimes/$major/node_modules" "$win/Stagepack-Setup.exe" "$win/PRESENTER.txt"; do
+	# a dist runtime made from an older runtime/ would ship its old exporter
+	"$here/runtime-stamp.sh" check linux || die "dist/linux/runtimes/$major was built from a different runtime/: run make runtime OS=linux"
+	"$here/runtime-stamp.sh" check win32 || die "dist/windows/runtimes/$major was built from a different runtime/: run make runtime OS=win32"
+	for f in "$lin/stagepack" "$lin/node/bin/node" "$lin/runtimes/$major/node_modules" "$lin/ffmpeg/ffmpeg" \
+		"$win/Stagepack-Setup.exe" "$win/PRESENTER.txt"; do
 		[ -e "$f" ] || die "missing $f: run 'make release VERSION=$ver'"
 	done
+	for f in "${mirrored[@]}"; do
+		[ -f "$root/.cache/dl/$f" ] || die "missing .cache/dl/$f: run 'make sources'"
+		# GitHub takes release assets up to 2 GiB
+		[ "$(stat -c %s "$root/.cache/dl/$f")" -lt 2147483648 ] || die ".cache/dl/$f is 2 GiB or more: too large for a release asset"
+	done
+	# the libraries archive is made from build/ffmpeg-sources.tsv and build/ffmpeg-licenses.txt as they are now
+	# (build/fetch.sh writes their sha256 beside it)
+	local libs="ffmpeg-${FFMPEG_VERSION}-libraries-source.tar.xz"
+	[ "$(cat "$root/.cache/dl/$libs.sources" 2>/dev/null)" = "$(cat "$here/ffmpeg-sources.tsv" "$here/ffmpeg-licenses.txt" | sha256sum | cut -d' ' -f1)" ] ||
+		die ".cache/dl/$libs is not made from the current build/ffmpeg-sources.tsv: run 'make sources'"
 	[ "$("$lin/stagepack" version)" = "$ver" ] || die "$lin/stagepack is not built as $ver: run 'make release VERSION=$ver'"
 	winstamped "$win/Stagepack-Setup.exe" || die "$win/Stagepack-Setup.exe is not built as $ver: run 'make release VERSION=$ver'"
 
 	rm -rf "$out"
 	mkdir -p "$out/npm"
 	cp "$win/Stagepack-Setup.exe" "$win/PRESENTER.txt" "$out/"
+	# linked rather than copied where the file system allows it
+	for f in "${mirrored[@]}"; do
+		ln "$root/.cache/dl/$f" "$out/$f" 2>/dev/null || cp "$root/.cache/dl/$f" "$out/$f"
+	done
 
 	# One top folder, files sorted, owner and times fixed (the commit's time): the same input gives the same
-	# bytes. A talk being shown (runtimes/<major>/work) and the viewer's own state (logs, journal, ...) stay out.
+	# bytes. A talk being shown (runtimes/<major>/work), the runtime's stamp and the viewer's own state (logs, journal, ...) stay out.
 	local when
 	when="$(git log -1 --format=%ct)"
 	tar --create --format=gnu --sort=name --mtime="@$when" --owner=0 --group=0 --numeric-owner \
-		--anchored --no-wildcards-match-slash --exclude="runtimes/*/work" \
+		--anchored --no-wildcards-match-slash --exclude="runtimes/*/work" --exclude="runtimes/*/.runtime-stamp" \
 		--transform="s,^,$tarname/,S" \
-		-C "$lin" stagepack node runtimes \
+		-C "$lin" stagepack node runtimes ffmpeg \
 		-C "$root" LICENSE |
 		xz -T0 -6 >"$out/$tarname.tar.xz.part"
 	mv "$out/$tarname.tar.xz.part" "$out/$tarname.tar.xz"
@@ -141,6 +175,10 @@ Or download \`$tarname.tar.xz\` ($size MB), check it against \`SHA256SUMS\`, unp
 
 **Authors:** \`npm i -D slidev-addon-stagepack\` and \`addons: [stagepack]\` in your talk's headmatter add an
 **Export as .sptx** button to Slidev's nav bar.
+
+The other files are the ffmpeg Stagepack ships for the PowerPoint export, as downloaded, and its source:
+ffmpeg's own, the build scripts, and the libraries linked into it. Its licence and theirs are in
+\`runtimes/$major/THIRD_PARTY_LICENSES.txt\` in the install.
 
 Everything installs for the current user only. See the README for details and how to uninstall.
 EOF

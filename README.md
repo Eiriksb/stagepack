@@ -5,7 +5,8 @@
 Stagepack packs a [Slidev](https://sli.dev) presentation into one file, `presentation.sptx`, that opens with a double-click.
 The viewer brings its own Node and a pinned Slidev, so the presenter needs nothing installed: no Node, no npm.
 It works offline when the presentation bundles its fonts (see "Fonts" below). The presentation opens in Slidev's presenter
-view, and edits to the speaker notes are saved back into the `.sptx` file.
+view, and edits to the speaker notes are saved back into the `.sptx` file. Right-click a `.sptx` file to export it to
+PowerPoint (see "Export to PowerPoint" below).
 
 A presentation can carry its own code (a Vite config, `setup/` files, Vue components, bundled packages), and Slidev
 runs that code as you, like opening any Slidev project. So before it shows such a presentation, the viewer asks, once
@@ -21,7 +22,10 @@ tests go, but see "Open items" below.
 ## Install
 
 Every channel installs the same build for the current user only, with no administrator rights or sudo,
-and registers `.sptx` files so they open with a double-click. Releases are at
+and registers `.sptx` files so they open with a double-click and offer the two PowerPoint exports (see "Export to
+PowerPoint" below). The exporter and ffmpeg come with the build; the export draws with the Chrome, Edge or Chromium
+already on the computer. ffmpeg makes the download larger: the Linux tarball is about 160 MB (118 MB without it)
+and `Stagepack-Setup.exe` about 243 MB (186 MB without it); installed, the viewer takes about 0.9 GB. Releases are at
 [github.com/Eiriksb/stagepack/releases](https://github.com/Eiriksb/stagepack/releases).
 
 **Windows:** download `Stagepack-Setup.exe` from the latest release and run it (see "For presenters" below,
@@ -33,7 +37,7 @@ also about the "Windows protected your PC" warning).
 curl -fsSL https://raw.githubusercontent.com/Eiriksb/stagepack/main/install.sh | sh
 ```
 
-[`install.sh`](install.sh) downloads `stagepack-<version>-linux-x64.tar.xz` (about 120 MB) from the latest
+[`install.sh`](install.sh) downloads `stagepack-<version>-linux-x64.tar.xz` (about 160 MB) from the latest
 release and checks it against the release's `SHA256SUMS`. It unpacks it under `~/.cache` and runs
 `stagepack install --yes` from there, which copies it to `~/.local/share/stagepack`. It needs `tar`, `xz`,
 `sha256sum` and `curl` or `wget`. `STAGEPACK_VERSION=0.1.0` picks a given release. Arguments go on to
@@ -47,7 +51,7 @@ tarball below.
 npx stagepack install
 ```
 
-or `npm install -g stagepack`, then `stagepack install`. The npm package is a small launcher, not the 800 MB
+or `npm install -g stagepack`, then `stagepack install`. The npm package is a small launcher, not the 0.9 GB
 viewer. `stagepack install` downloads the release of the same version for your platform and checks it against
 the SHA-256 checksums published inside the npm package. Then it runs that build's own installer: the Linux
 tarball's `stagepack install`, or `Stagepack-Setup.exe`. Afterwards `stagepack open|pack|uninstall` run the
@@ -118,6 +122,34 @@ later, you are asked again. Presentations without code never ask.
 
 To remove Stagepack: **Settings → Apps → Stagepack → Uninstall**. Your `.sptx` files are not touched.
 
+### Export to PowerPoint
+
+Right-click a `.sptx` file and choose one of two entries:
+
+- **Export to PowerPoint (editable)** writes `NAME.pptx` next to the `.sptx` file. Text, shapes and pictures stay
+  editable in PowerPoint.
+- **Export to PowerPoint (with animations)** writes `NAME-animations.pptx`. Clicks that move something become short
+  videos, so the slide plays as in Slidev. This copy is made for presenting from PowerPoint for the web and from
+  desktop PowerPoint; desktop PowerPoint and Windows haven't been checked yet (see "Open items").
+
+Where the entries are:
+
+- **Windows:** in the right-click menu. Windows 11 shows them under **Show more options**.
+- **GNOME Files (Nautilus):** right-click, then **Scripts**.
+- **KDE (Dolphin):** in the right-click menu, as plain entries.
+
+The export draws with the Chrome, Edge or Chromium already on the computer (a Chromium that isn't a snap package;
+Windows has Edge). Without one, it says "Exporting to PowerPoint needs Chrome, Edge or Chromium. Install one and try
+again." (on Windows, "needs Microsoft Edge or Chrome") and nothing is written.
+
+A box shows the step ("Slide 4 of 11") and the time left, and has **Cancel**, which stops the export and leaves no
+half-written file. If `NAME.pptx` already exists, you are asked before it is replaced. If the folder can't be
+written, you are asked where to save. A presentation that contains code gets the same "contains code" question as
+when it is opened (see above); No ends the export with nothing written. Only one export of a file runs at a time.
+
+When it is done, the box lists notes worth reading, and has **Open**, **Show in folder** and **Close**. If it fails, the
+box says in one sentence what went wrong and names the log folder (`logs/` in the viewer's folder, see "Layout").
+
 ### On Linux
 
 There is no setup program: the Linux build (the release tarball, or `make build-linux`: a folder with
@@ -138,7 +170,8 @@ script and the npm package (see "Install" above) do step 1 for you.
    `kdialog` on KDE. Without either, messages go to the log and to a desktop notification, and the code
    question is answered No: such a presentation does not open until zenity is installed.
 5. **To remove it:** `~/.local/share/stagepack/stagepack uninstall`. It removes exactly what the install
-   added (the folder, the MIME type, the desktop entry, the icons and the default-application entry) and, as on
+   added (the folder, the MIME type, the desktop entry, the icons, the default-application entry and the export
+   entries) and, as on
    Windows, keeps notes that are not yet in any presentation. Your `.sptx` files are not touched.
 
 ## For authors
@@ -193,6 +226,22 @@ Then name it in the headmatter of `slides.md`, as `addons: [stagepack]` on one l
 presentation that names it opens there without the "contains code" question. That holds for exactly this addon
 (`stagepack` or `slidev-addon-stagepack`); any other addon still counts. `stagepack pack` never bundles your copy
 of it. Details are in [addon/README.md](addon/README.md).
+
+### Export to PowerPoint from a terminal
+
+`stagepack export-pptx [--animations] FILE.sptx` does what the right-click entries do.
+
+| flag | meaning |
+|---|---|
+| `--animations` | the animated copy, `NAME-animations.pptx` |
+| `--home DIR` | the viewer's folder (default: the folder of the program) |
+| `--headless` | no dialogs: questions and results are JSON lines on stdout; Ctrl-C or SIGTERM cancels |
+| `--trust-code` | run the presentation's own code without asking; only for presentations you trust |
+| `--yes` | replace an existing `.pptx` without asking |
+
+Exit codes: 0 done, 1 failed, 2 usage, 3 cancelled or code not trusted, 4 another export of that file is running, 5 no Chrome, Edge or Chromium found.
+The exporter is [slidev-pptx-export](https://github.com/Eiriksb/slidev-pptx-export); its config file, if the
+presentation carries one, applies as it does there.
 
 ### Code in a presentation
 
@@ -265,8 +314,9 @@ fonts:
 
 ## Building from source
 
-Needs a Linux (amd64) build host with `curl`, `tar`, `unzip` and `npm`. Go and Node are downloaded once into
-`.cache/`, pinned and checksummed (`build/versions.env`, `build/fetch.sh`).
+Needs a Linux (amd64) build host with `curl`, `tar`, `unzip` and `npm`. Go, Node and ffmpeg are downloaded once
+into `.cache/`, pinned and checksummed (`build/versions.env`, `build/fetch.sh`). A release also needs `git` and
+`svn` (Subversion), for ffmpeg's sources (`make sources`, see "Releasing").
 
 | target | what it does |
 |---|---|
@@ -274,13 +324,14 @@ Needs a Linux (amd64) build host with `curl`, `tar`, `unzip` and `npm`. Go and N
 | `make e2e` | end-to-end tests against the Linux build in `dist/linux` (skipped when it is missing) |
 | `make node OS=linux` | puts Node in `dist/linux/node/` (`OS=win32` for Windows) |
 | `make runtime OS=linux` | installs the pinned Slidev runtime in `dist/linux/runtimes/53/` and checks its licences (online) |
+| `make programs OS=linux` | puts ffmpeg, its licence and its libraries' licences in `dist/linux/ffmpeg/` (`OS=win32` for Windows) |
 | `make build OS=linux` | builds `dist/linux/stagepack` (`OS=win32` cross-compiles `stagepack.exe`) |
-| `make build-linux` | `dist/linux/stagepack` with `node/` and `runtimes/` beside it; fetches Node and installs the runtime only if they are missing |
-| `make build-windows` | `dist/windows/Stagepack-Setup.exe` and `PRESENTER.txt` beside it; the same for Windows (Node, runtime, viewer, payload, installer) |
+| `make build-linux` | `dist/linux/stagepack` with `node/`, `runtimes/` and `ffmpeg/` beside it; fetches Node and installs the runtime only if they are missing, copies ffmpeg each time and checks the programs (`build/programs.sh`, see "Licences") |
+| `make build-windows` | `dist/windows/Stagepack-Setup.exe` and `PRESENTER.txt` beside it; the same for Windows (Node, runtime, programs, viewer, payload, installer) |
 | `make licenses-go` | the licences of the Go modules the Linux and Windows programs link (`build/go-licenses.tsv`); fails on a module that isn't permissive or isn't in the table |
-| `make setup` | builds `dist/windows/Stagepack-Setup.exe`: the installer, with the Node and Slidev runtime and the viewer inside (needs `make node runtime OS=win32`; fetches go-winres, 0BSD, once for the icon) |
-
-| `make release VERSION=0.1.0` | `make test licenses-go`, then both builds with the version stamped in, packed into `dist/release/v0.1.0/` (below) |
+| `make setup` | builds `dist/windows/Stagepack-Setup.exe`: the installer, with Node, the Slidev runtime, ffmpeg and the viewer inside (needs `make node runtime OS=win32`; fetches go-winres, 0BSD, once for the icon) |
+| `make sources` | fetches ffmpeg's sources, which a release carries, into `.cache/dl/` (online, about 1.2 GB the first time; needs `git`, and `svn` for xvid) |
+| `make release VERSION=0.1.0` | `make test licenses-go`, then both builds with the version stamped in and `make sources`, packed into `dist/release/v0.1.0/` (below) |
 | `make gh-release VERSION=0.1.0` | publishes `dist/release/v0.1.0/` as the GitHub release `v0.1.0` (online) |
 
 For a Windows check without Windows: `GOOS=windows go vet ./...` and `GOOS=windows go build ./cmd/stagepack`.
@@ -292,20 +343,34 @@ it is in the file's version info and in the Settings → Apps entry. Builds with
 
 1. Commit everything. `make release VERSION=0.1.0` refuses uncommitted changes (`ALLOW_DIRTY=1` makes a trial
    build anyway) and a tag `v0.1.0` that is not the current commit. It runs `make test licenses-go`, builds
-   `dist/linux` and `dist/windows`, and writes `dist/release/v0.1.0/` (`build/release.sh`):
+   `dist/linux` and `dist/windows`, fetches the sources (`make sources`), and writes `dist/release/v0.1.0/`
+   (`build/release.sh`):
 
    | file | what |
    |---|---|
    | `Stagepack-Setup.exe`, `PRESENTER.txt` | the Windows installer and the presenter's guide |
-   | `stagepack-0.1.0-linux-x64.tar.xz` | `dist/linux` (the program, `node/`, `runtimes/`, without the viewer's own state) and `LICENSE`, in one folder |
-   | `SHA256SUMS` | of the three above |
+   | `stagepack-0.1.0-linux-x64.tar.xz` | `dist/linux` (the program, `node/`, `runtimes/`, `ffmpeg/`, without the viewer's own state) and `LICENSE`, in one folder |
+   | `ffmpeg-n7.1.5-12-g1fdbca85aa-linux64-gpl-7.1.tar.xz`, `…-win64-gpl-7.1.zip` | the bundled ffmpeg as downloaded: BtbN keeps old builds only for a while |
+   | `FFmpeg-<commit>.tar.gz`, `FFmpeg-Builds-<commit>.tar.gz`, `ffmpeg-n7.1.5-12-g1fdbca85aa-libraries-source.tar.xz` | ffmpeg's source (see "Licences"), from `.cache/dl/` |
+   | `SHA256SUMS` | of all the files above |
    | `RELEASE_NOTES.md` | the text of the GitHub release |
    | `npm/stagepack-0.1.0.tgz` | the npm launcher (`npm/`), with this version and `SHA256SUMS` inside |
    | `npm/slidev-addon-stagepack-0.1.0.tgz` | the Slidev export addon (`addon/`), with this version |
 
    Node and the runtime are reused from `dist/` when they are there (they are pinned by
    `build/versions.env` and `runtime/package-lock.json`); `make node runtime OS=linux` (and `OS=win32`) makes
-   them again. The tarball is the same bytes for the same `dist/linux` and commit. `PRERELEASE=1` adds a
+   them again. The tarball is the same bytes for the same `dist/linux` and commit. ffmpeg's archives and
+   sources come to about 0.9 GB (GitHub takes files up to 2 GiB; `build/release.sh` checks). Two of ffmpeg's
+   libraries live only in Subversion. Each is checked against the hash of its files pinned in
+   `build/ffmpeg-sources.tsv` (`tree=`), whichever way it comes: lame from SourceForge's snapshot zip of its
+   revision (from svn only when SourceForge has dropped the snapshot, which **Download Snapshot** on that
+   revision's page makes again; a snapshot that doesn't match stops the run), xvid from `svn`, as its server
+   offers no snapshot, so `make sources` needs `svn`. When a row's revision changes, `make sources` stops and
+   prints the hash of the files it fetched; check them and pin it as that row's `tree=`. `make sources` also checks that the licence texts in those sources are the
+   ones in `build/ffmpeg-licenses.txt`, which ship with ffmpeg; when they differ it writes the new ones to
+   `.cache/dl/ffmpeg-licenses.txt` to check and commit. A row of the table that changed is fetched again, and
+   the archive is made again when the table or the licence texts changed (`build/release.sh` refuses one made
+   from an older table). `PRERELEASE=1` adds a
    pre-release note to `RELEASE_NOTES.md`, but not GitHub's pre-release flag: `releases/latest`, which the
    install script and the download link use, skips pre-releases.
 2. Push the commit, then `make gh-release VERSION=0.1.0`. It checks
@@ -332,13 +397,19 @@ runtimes/53/package.json, package-lock.json       the pinned runtime (runtime/)
 runtimes/53/pnpm-workspace.yaml                   marks runtimes/53/ as Vite's workspace root
 runtimes/53/node_modules/@slidev/cli/bin/slidev.mjs
 runtimes/53/node_modules/slidev-addon-stagepack/  the export addon (addon/, copied in by build/addon.sh), inert here
+runtimes/53/node_modules/slidev-pptx-export/      the PowerPoint exporter (runtime/)
+runtimes/53/THIRD_PARTY_LICENSES.txt              the licences of the runtime's packages, of node/ and of ffmpeg/
+ffmpeg/ffmpeg[.exe], ffmpeg/LICENSE.txt           ffmpeg, for the clips of the animated copy, and its licence (GPL 3)
+ffmpeg/LIBRARY-LICENSES.txt                       the licences of the libraries linked into it (build/ffmpeg-licenses.txt)
 runtimes/53/work/<id>/                            one opened presentation, unpacked
 journal/<key>.json                                note edits not yet in the .sptx file (kept by uninstall)
 trusted.json                                      presentations allowed to run their code: id and hash of that version
 logs/viewer.log                                   the viewer's log (viewer.log.1: the previous one)
 logs/<key>.log                                    Slidev's output for one presentation
+logs/export-<key>.log                             the log of one PowerPoint export
 browser/<hash>/                                   the browser profile of an open presentation's windows (removed when they close)
 instances/<hash>.json, .lock                      one running presentation: process, port, URL
+instances/<hash>.export                           lock of a running PowerPoint export of one file
 ```
 
 On Linux the install also writes, below `~/.local/share` (`$XDG_DATA_HOME`), and nothing else:
@@ -347,6 +418,9 @@ On Linux the install also writes, below `~/.local/share` (`$XDG_DATA_HOME`), and
 mime/packages/stagepack.xml                       application/x-stagepack: *.sptx, a subclass of application/zip
 applications/stagepack.desktop                    Exec=<home>/stagepack open %f, hidden from the app menu
 icons/hicolor/{256x256,48x48,32x32,16x16}/apps/stagepack.png   the icon (from assets/stagepack.ico)
+kio/servicemenus/stagepack-export.desktop         the two export entries in KDE's right-click menu
+nautilus/scripts/Export to PowerPoint (editable)  the two export entries under GNOME Files' Scripts
+nautilus/scripts/Export to PowerPoint (with animations)
 ```
 
 and runs `update-mime-database`, `update-desktop-database` and `xdg-mime default stagepack.desktop
@@ -367,7 +441,8 @@ Slidev writes its generated files to `work/<id>/node_modules/.slidev/`, so the w
 and gets a `node_modules/` even when the presentation vendors nothing.
 
 The Go code is in `cmd/stagepack` (command line) and `internal/` (`brand` holds the product's names; `pack`,
-`deck`, `workspace`, `trust`, `save`, `slidev`, `instance`, `ui`, `browser`, `app`).
+`deck`, `workspace`, `trust`, `save`, `slidev`, `instance`, `ui`, `browser`, `app`, `export`). On Windows the install also
+adds two verbs, `exportpptx` and `exportpptxanim`, under Stagepack's file type in the current user's registry.
 
 ## Measured
 
@@ -384,13 +459,22 @@ in Inter Variable.
 
 | size | Linux | Windows |
 |---|---|---|
-| `runtimes/53/node_modules` (685 packages) | 596 MB | 574 MB (27 393 files) |
+| `runtimes/53/node_modules` (731 packages) | 587 MB | 588 MB (27 674 files) |
 | `node/` | 208 MB | 110 MB |
+| `ffmpeg/` (ffmpeg 7.1, static, GPL, and the licences) | 135 MB | 134 MB |
+
+| download | without ffmpeg | with it |
+|---|---|---|
+| `stagepack-<version>-linux-x64.tar.xz` | 118 MB | 160 MB |
+| `Stagepack-Setup.exe` | 186 MB | 243 MB |
 
 ## Licences
 
-Stagepack is MIT licensed (see `LICENSE`). It ships only permissively licensed components, plus the
-weak-copyleft exceptions below, unmodified.
+Stagepack is MIT licensed (see `LICENSE`). The viewer and what it links stay permissive, with the weak-copyleft
+exceptions below (in its Slidev runtime, unmodified). The separate programs it runs as their own processes (Node,
+ffmpeg) may be under other open-source licences, GPL and LGPL included: they are shipped unmodified, each with
+its licence and notices in the third-party licence file (`runtimes/53/THIRD_PARTY_LICENSES.txt`) and, where its
+licence requires it, its exact source in Stagepack's release assets. Node (MIT) needs no source archive.
 
 `build/runtime.sh` runs `build/licenses.mjs`, which writes `runtimes/53/THIRD_PARTY_LICENSES.txt` and fails on
 any package outside the permissive list (MIT, ISC, BSD-2/3-Clause, Apache-2.0, 0BSD, OFL-1.1, Unlicense, CC0-1.0,
@@ -414,9 +498,28 @@ programs, reads their module lists with `go version -m`, and fails on a module t
 | `github.com/godbus/dbus/v5` | v5.1.0 | BSD-2-Clause | Linux (systray's D-Bus tray, and the check for a tray area); listed for Windows too |
 
 On Linux no GUI library is linked: the tray speaks D-Bus in pure Go, and dialogs are the `zenity` or
-`kdialog` program run as a separate process (both GPL, so they are not linked or shipped).
+`kdialog` program run as a separate process (both GPL; the desktop's own copy is used, Stagepack ships neither).
 
 The npm side is checked by `build/licenses.mjs`, above.
+
+The programs Stagepack ships beside the viewer are listed in `build/programs.tsv`. `build/programs.sh dist/<os>`,
+which `make build-linux` and `make setup` run, fails on a folder of the build that isn't in the list (a new
+program has to be reviewed and added), on a listed program that is missing, on a missing licence file, on a
+library linked into a program that has no notices in its licence files, and on a GPL, LGPL, MPL or EPL program
+without a source archive. It adds each one's licence texts to `THIRD_PARTY_LICENSES.txt`, in a section
+"Programs shipped beside the viewer", with where its source is.
+
+| program | version | licence and notices | source, in the release assets |
+|---|---|---|---|
+| Node.js | 24.22.1 | MIT, and the licences of the parts it bundles (`node/LICENSE`) | none needed (MIT) |
+| ffmpeg: BtbN's FFmpeg-Builds `autobuild-2026-07-31-14-10`, static, GPL | n7.1.5-12-g1fdbca85aa | GPL-3.0-or-later (`ffmpeg/LICENSE.txt`); the libraries linked into it (libx264 and the others in `build/ffmpeg-sources.tsv`) under their own licences, whose texts and notices are in `ffmpeg/LIBRARY-LICENSES.txt` | `FFmpeg-<commit>.tar.gz` (ffmpeg at the commit it was built from), `FFmpeg-Builds-<commit>.tar.gz` (the build scripts) and `ffmpeg-n7.1.5-12-g1fdbca85aa-libraries-source.tar.xz` (every library linked in) |
+
+ffmpeg's archives and its sources are pinned with their sha256 in `build/versions.env`, which also says where
+each value comes from. The libraries are pinned by commit (two by Subversion revision) in
+`build/ffmpeg-sources.tsv`, listed from BtbN's build scripts at that build's commit, with the files that hold
+each one's licence texts and notices. `build/ffmpeg-licenses.txt` holds those texts (`build/fetch.sh
+ffmpeg-libraries` checks it against the sources, and fetches them into one archive). `make release` puts the
+sources and ffmpeg's own downloads beside the release's files.
 
 ## Open items
 
@@ -424,3 +527,6 @@ The npm side is checked by `build/licenses.mjs`, above.
   `Stagepack-Setup.exe` on one and open a `.sptx` file: install, double-click, presenter view, audience view,
   a notes edit saved into the file ("Notes saved"), Stop, uninstall. Until then Windows behaviour is tested
   only by cross-compiling and by the tests that don't need Windows.
+- The animated PowerPoint export (`-animations.pptx`) has not been checked in desktop PowerPoint, nor the export
+  entries on Windows. Before the first handover, export a presentation on a Windows machine, open both copies in
+  desktop PowerPoint, and play the animated one.

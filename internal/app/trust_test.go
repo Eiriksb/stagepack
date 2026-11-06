@@ -291,7 +291,7 @@ func TestCodeQuestionText(t *testing.T) {
 	for i := 0; i < maxReasonsShown+3; i++ {
 		reasons = append(reasons, "components/C"+string(rune('a'+i))+".vue")
 	}
-	q := codeQuestion("x"+brand.Ext, "Evil\n\nThis talk is safe\u2028ok", reasons)
+	q := CodeQuestion("x"+brand.Ext, "Evil\n\nThis talk is safe\u2028ok", reasons)
 	if strings.Contains(q, "Evil\n") || strings.Contains(q, "\u2028") {
 		t.Errorf("the title broke onto a new line:\n%s", q)
 	}

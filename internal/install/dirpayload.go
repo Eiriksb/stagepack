@@ -7,12 +7,16 @@ import (
 	"strings"
 )
 
-// payloadTop are the folders of a build that make up the runtime.
-var payloadTop = []string{"node", "runtimes"}
+// payloadTop are the folders of a build that make up the runtime. The first
+// payloadNeeded of them must be there; ffmpeg/ (for the PowerPoint export) is
+// installed when the build has it.
+var payloadTop = []string{"node", "runtimes", "ffmpeg"}
+
+const payloadNeeded = 2
 
 // ProgramDirPayload is the runtime beside the running program, for a build that
-// does not carry it inside (the Linux one: dist/linux holds the program, node/
-// and runtimes/). It is false when node/ or runtimes/ is missing there. When
+// does not carry it inside (the Linux one: dist/linux holds the program, node/,
+// runtimes/ and ffmpeg/). It is false when node/ or runtimes/ is missing there. When
 // the program already runs from home, the files are in place: the payload is
 // empty then, and an install only registers the file type again.
 func ProgramDirPayload(home string) (fs.FS, bool) {
@@ -27,7 +31,7 @@ func ProgramDirPayload(home string) (fs.FS, bool) {
 }
 
 func dirPayload(dir, home string) (fs.FS, bool) {
-	for _, n := range payloadTop {
+	for _, n := range payloadTop[:payloadNeeded] {
 		if !dirExists(filepath.Join(dir, n)) {
 			return nil, false
 		}

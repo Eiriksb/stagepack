@@ -1,0 +1,145 @@
+# The sources of the libraries linked into the bundled ffmpeg (FFMPEG_BUILD in build/versions.env), as BtbN's
+# build scripts at FFMPEG_BUILDS_COMMIT name them (scripts.d/, one stage per script): every stage enabled for
+# the linux64-gpl and win64-gpl builds of ffmpeg 7.1, with tags resolved to commits, plus what those stages'
+# download steps fetch besides (shaderc's DEPS, opus' model data, rav1e's crates, submodules).
+# `build/fetch.sh ffmpeg-libraries` fetches them all into one archive, which the release mirrors with ffmpeg's
+# own source (see "Licences" in the README), and checks that the licence texts named below are what
+# build/ffmpeg-licenses.txt holds; build/programs.sh checks that file has every row. On a new FFMPEG_BUILD, list
+# them again from its scripts.d/.
+#
+# path: the folder (or file) in the archive, named after the stage
+# kind: git (ref is the commit; the commit id checks the content), svn (ref is the revision; its tree= option
+#       checks the content), file (ref is the sha256), crates (every registry crate in the Cargo.lock at ref,
+#       checked against its checksum there)
+# options: git: submodules (all, recursive), submodules=<path>, or drop=<path> (a folder BtbN's download step
+#          deletes before the build); - for none. svn: tree=<sha256>, the hash of the files at that revision
+#          (`find . -type f | sort | xargs sha256sum | sha256sum`, keywords not expanded, LF line ends), or
+#          tree=unset until it is pinned (make sources then stops and prints it); then, after a comma, maybe
+#          snapshot=<url>, a zip of that revision to use instead of svn while the host still has it
+# builds: the BtbN builds that link it
+# licences: the files with its licence texts and notices, relative to path, separated by commas; file@A-B is
+#           lines A to B of a file that has the notice in it; * for crates: each crate's own licence files (or
+#           its Cargo.toml's license and authors when it has none); - for a file, covered by the folder it is in
+# path	kind	url	ref	options	builds	licences
+10-mingw-std-threads	git	https://github.com/meganz/mingw-std-threads.git	c931bac289dd431f1dd30fc4a5d1a7be36668073	-	win64	LICENSE
+10-mingw	git	https://git.code.sf.net/p/mingw-w64/mingw-w64.git	a556c6943c442465dc9a051bc6d3a6d452df4a1d	-	win64	COPYING,COPYING.MinGW-w64/COPYING.MinGW-w64.txt,COPYING.MinGW-w64-runtime/COPYING.MinGW-w64-runtime.txt,mingw-w64-libraries/winpthreads/COPYING
+10-xorg-macros	git	https://gitlab.freedesktop.org/xorg/util/macros.git	a9d71e3fd8e6758b70be31c586921bbbcd2a8449	-	linux64	COPYING
+20-libiconv	git	https://git.savannah.gnu.org/git/libiconv.git	9d19c66d0a1768cffcf497b2db70bf4018b578d7	-	linux64,win64	COPYING,COPYING.LIB
+20-libiconv/gnulib	git	https://github.com/coreutils/gnulib.git	103c922f47f8b0fb0503024783bdaff5016eea82	-	linux64,win64	COPYING
+20-zlib	git	https://github.com/madler/zlib.git	e3dc0a85b7032e98380dec011bc8f2c2ee0d8fca	-	linux64,win64	LICENSE
+25-fftw3	git	https://github.com/FFTW/fftw3.git	93ed4c786934aec9946f8dda4b4e3eb08f8be41c	-	linux64,win64	COPYING,COPYRIGHT
+25-fribidi	git	https://github.com/fribidi/fribidi.git	069a7e3d31e6aa74f2068a8e0804106ce7906639	-	linux64,win64	COPYING
+25-gmp	git	https://github.com/BtbN/gmplib.git	9994908f090c694f8a152d660dc6852e0c48557a	-	linux64,win64	COPYING.LESSERv3
+25-libogg	git	https://github.com/xiph/ogg.git	06a5e0262cdc28aa4ae6797627a783b5010440f0	-	linux64,win64	COPYING
+25-libxml2	git	https://github.com/GNOME/libxml2.git	c8eaf2236ff16667970f96f3f01e119c99d38ab2	-	linux64,win64	Copyright
+25-openssl	git	https://github.com/openssl/openssl.git	aae016bfd52fcad2bc9657c2c782cfdf73b1ed5f	submodules	linux64,win64	LICENSE.txt
+25-xz	git	https://github.com/tukaani-project/xz.git	f3b5688159c60495f48db3942a36509671dfce89	-	linux64,win64	COPYING,COPYING.0BSD,COPYING.GPLv2,COPYING.GPLv3,COPYING.LGPLv2.1
+45-fonts/25-freetype	git	https://gitlab.freedesktop.org/freetype/freetype.git	5336c0d4da22a13dab3389eb153b12672fdf841c	-	linux64,win64	LICENSE.TXT
+45-fonts/35-fontconfig	git	https://gitlab.freedesktop.org/fontconfig/fontconfig.git	939e33ee473d70a790c89b624385c2c0a5875a51	-	linux64,win64	COPYING
+45-fonts/45-harfbuzz	git	https://github.com/harfbuzz/harfbuzz.git	fe9501b08d1bf40bf5c6285d336157aa82b29e40	-	linux64,win64	COPYING
+45-fonts/50-freetype	git	https://gitlab.freedesktop.org/freetype/freetype.git	5336c0d4da22a13dab3389eb153b12672fdf841c	-	linux64,win64	LICENSE.TXT
+45-libsamplerate	git	https://github.com/libsndfile/libsamplerate.git	2ccde9568cca73c7b32c97fefca2e418c16ae5e3	-	linux64,win64	COPYING
+45-libudfread	git	https://code.videolan.org/videolan/libudfread.git	139a2194525f2745b98a98e4d8fa627d07440176	-	linux64,win64	COPYING
+45-libunibreak	git	https://github.com/adah1972/libunibreak.git	3ce4bfa3129ff3738046a44a6db533d2ce25af2b	-	linux64,win64	LICENCE
+45-libvorbis	git	https://github.com/xiph/vorbis.git	e3c9861ff096d52378e131ff8c334552e09cdffa	-	linux64,win64	COPYING
+45-opencl/headers	git	https://github.com/KhronosGroup/OpenCL-Headers.git	a98488062f50c77c3e2edaf9c4f8dca7c41781ec	-	linux64,win64	LICENSE
+45-opencl/loader	git	https://github.com/KhronosGroup/OpenCL-ICD-Loader.git	18fdcd58286376124f938948aa8ed156079c1c16	-	linux64,win64	LICENSE
+45-pulseaudio	git	https://gitlab.freedesktop.org/pulseaudio/pulseaudio.git	b096704c0d42c5e784deb781a07b23cfb5286a82	-	linux64	LICENSE
+45-vmaf	git	https://github.com/Netflix/vmaf.git	e9909adb89306a270d9c78207bd12acf730279ad	-	linux64,win64	LICENSE
+45-x11/10-xcbproto	git	https://gitlab.freedesktop.org/xorg/proto/xcbproto.git	cf7e2581b613802f2f8ec2a4b50a6a20aad4bf52	-	linux64	COPYING
+45-x11/10-xproto	git	https://gitlab.freedesktop.org/xorg/proto/xorgproto.git	fcb7e9a1a0b593a44740d83b0babddd331fea830	-	linux64	COPYING-applewmproto,COPYING-bigreqsproto,COPYING-compositeproto,COPYING-damageproto,COPYING-dmxproto,COPYING-dri2proto,COPYING-dri3proto,COPYING-evieproto,COPYING-fixesproto,COPYING-fontcacheproto,COPYING-fontsproto,COPYING-glproto,COPYING-inputproto,COPYING-kbproto,COPYING-lg3dproto,COPYING-pmproto,COPYING-presentproto,COPYING-printproto,COPYING-randrproto,COPYING-recordproto,COPYING-renderproto,COPYING-resourceproto,COPYING-scrnsaverproto,COPYING-trapproto,COPYING-videoproto,COPYING-windowswmproto,COPYING-x11proto,COPYING-xcmiscproto,COPYING-xextproto,COPYING-xf86bigfontproto,COPYING-xf86dgaproto,COPYING-xf86driproto,COPYING-xf86miscproto,COPYING-xf86rushproto,COPYING-xf86vidmodeproto,COPYING-xineramaproto,COPYING-xwaylandproto
+45-x11/10-xtrans	git	https://gitlab.freedesktop.org/xorg/lib/libxtrans.git	693d28a76024a2a0a28eef25037bcb7558b8bbfa	-	linux64	COPYING
+45-x11/20-libxau	git	https://gitlab.freedesktop.org/xorg/lib/libxau.git	14ba0f63c4ba2229dd17574134332767bded9018	-	linux64	COPYING
+45-x11/30-libxcb	git	https://gitlab.freedesktop.org/xorg/lib/libxcb.git	4d6e1c8fffaf811cf4d0e68ff3bc6f50e62c32c7	-	linux64	COPYING
+45-x11/40-libx11	git	https://gitlab.freedesktop.org/xorg/lib/libx11.git	b10abf6b99d5acf846c26f305f1a14a86360a96c	-	linux64	COPYING
+45-x11/50-libxext	git	https://gitlab.freedesktop.org/xorg/lib/libxext.git	2a694ba264ccdb205909909abfe8b136f9156ebe	-	linux64	COPYING
+45-x11/50-libxfixes	git	https://gitlab.freedesktop.org/xorg/lib/libxfixes.git	55bb2d1d57d43e0595ce45393f26eb433d75a7cc	-	linux64	COPYING
+45-x11/50-libxi	git	https://gitlab.freedesktop.org/xorg/lib/libxi.git	f00f7e9140b4707775331950dd67851e55058c40	-	linux64	COPYING
+45-x11/50-libxinerama	git	https://gitlab.freedesktop.org/xorg/lib/libxinerama.git	d7162b962710bc724b41cabab4e7cea303c4b541	-	linux64	COPYING
+45-x11/50-libxrender	git	https://gitlab.freedesktop.org/xorg/lib/libxrender.git	f32afe9f877ae032c6bc9c27b17b7978b1b4c856	-	linux64	COPYING
+45-x11/50-libxscrnsaver	git	https://gitlab.freedesktop.org/xorg/lib/libxscrnsaver.git	3f753e7a4050db083474444ae91cc17a849eaa4d	-	linux64	COPYING
+45-x11/50-libxxf86vm	git	https://gitlab.freedesktop.org/xorg/lib/libxxf86vm.git	c76fde6bffcc87e5dd98d8196bb01a299bdc3236	-	linux64	COPYING
+45-x11/60-libglvnd	git	https://gitlab.freedesktop.org/glvnd/libglvnd.git	c046a760d845416e98ac4128757b2b356c47fdaa	-	linux64	README.md@323-537
+45-x11/60-libxcursor	git	https://gitlab.freedesktop.org/xorg/lib/libxcursor.git	15efad7ccd035f5d1ddc8d437e047569d1775fa7	-	linux64	COPYING
+45-x11/60-libxrandr	git	https://gitlab.freedesktop.org/xorg/lib/libxrandr.git	8a4ba1974bcf07057cf891128d86ae1ab5303574	-	linux64	COPYING
+45-x11/60-libxv	git	https://gitlab.freedesktop.org/xorg/lib/libxv.git	f315ec50fcad9bdbaed46c3e78dc5e7fe209f933	-	linux64	COPYING
+47-vulkan/40-vulkan-headers	git	https://github.com/KhronosGroup/Vulkan-Headers.git	8d6039a455a7ecc7d2a592ff97f62db4e59b70bf	-	linux64,win64	LICENSE.md
+47-vulkan/45-vulkan-loader	git	https://github.com/BtbN/Vulkan-Shim-Loader.git	65b3936528cd92eb4ea3de485d03f858a3850484	-	linux64,win64	LICENSE
+47-vulkan/45-vulkan-loader/Vulkan-Headers	git	https://github.com/KhronosGroup/Vulkan-Headers.git	8d6039a455a7ecc7d2a592ff97f62db4e59b70bf	-	linux64,win64	LICENSE.md
+47-vulkan/50-shaderc	git	https://github.com/google/shaderc.git	49a8724d561c13db22b52f99f2a0e2707a9a9e3c	-	linux64,win64	LICENSE
+47-vulkan/50-shaderc/third_party/abseil_cpp	git	https://github.com/abseil/abseil-cpp.git	dbf88f932096c7f7714356e919f04749eb87c3e9	-	linux64,win64	LICENSE
+47-vulkan/50-shaderc/third_party/effcee	git	https://github.com/google/effcee.git	910ed15722d5d05c9d71ecf36c1a22243cb79b02	-	linux64,win64	LICENSE
+47-vulkan/50-shaderc/third_party/googletest	git	https://github.com/google/googletest.git	52eb8108c5bdec04579160ae17225d66034bd723	-	linux64,win64	LICENSE
+47-vulkan/50-shaderc/third_party/glslang	git	https://github.com/KhronosGroup/glslang.git	ce138e2c2d6992b31ff4cd2e955904637785a881	-	linux64,win64	LICENSE.txt
+47-vulkan/50-shaderc/third_party/re2	git	https://github.com/google/re2.git	927f5d53caf8111721e734cf24724686bb745f55	-	linux64,win64	LICENSE
+47-vulkan/50-shaderc/third_party/spirv-headers	git	https://github.com/KhronosGroup/SPIRV-Headers.git	daa093dd29aab8cbb6562b808370562f56e399fb	-	linux64,win64	LICENSE
+47-vulkan/50-shaderc/third_party/spirv-tools	git	https://github.com/KhronosGroup/SPIRV-Tools.git	d5bbf95d87dd6d2694fbf09acfb42a00c93575e8	-	linux64,win64	LICENSE
+47-vulkan/55-spirv-cross	git	https://github.com/KhronosGroup/SPIRV-Cross.git	81fc2ea76c2b8018d4427c380961a6886cb3ce7d	-	linux64,win64	LICENSE
+47-vulkan/60-spirv-headers	git	https://github.com/KhronosGroup/SPIRV-Headers.git	02c0394e57af6dfdda7f68973df6aa20fc3f5def	-	linux64,win64	LICENSE
+50-amf	git	https://github.com/GPUOpen-LibrariesAndSDKs/AMF.git	6ec029531e356102aafe1e236cfd0ddf739939da	drop=Thirdparty	linux64,win64	LICENSE.txt
+50-aom	git	https://aomedia.googlesource.com/aom	43f2b6a99000057184332c8c2dd4bedc19fdec6f	-	linux64,win64	LICENSE,PATENTS
+50-aribb24/25-libpng	git	https://github.com/glennrp/libpng.git	d1d0abeffede1cc898ddc3d0e600839cf026d749	-	linux64,win64	LICENSE.md
+50-aribb24/50-libaribb24	git	https://github.com/nkoriyama/aribb24.git	5e9be272f96e00f15a2f3c5f8ba7e124862aec38	-	linux64,win64	COPYING
+50-avisynth	git	https://github.com/AviSynth/AviSynthPlus.git	fcb9c8a205c1b01ee1ea491adba50e2217594598	-	linux64,win64	distrib/gpl.txt,distrib/lgpl_for_used_libs.txt
+50-chromaprint	git	https://github.com/acoustid/chromaprint.git	ab48115481c14873eb870e7a88334550c68d36c1	-	linux64,win64	LICENSE.md
+50-dav1d	git	https://code.videolan.org/videolan/dav1d.git	c150ba6c9b9be0956330a9ddfee33ad88f2b1bc5	-	linux64,win64	COPYING
+50-davs2	git	https://github.com/pkuvcl/davs2.git	b41cf117452e2d73d827f02d3e30aa20f1c721ac	-	linux64,win64	COPYING
+50-dvd/30-libdvdcss	git	https://code.videolan.org/videolan/libdvdcss.git	891f8fb5c45baf70bfbd67d973d1d4f0b10fd0aa	-	linux64,win64	COPYING
+50-dvd/40-libdvdread	git	https://code.videolan.org/videolan/libdvdread.git	8c1c65fbbb2944cd0201c404cd72859a18a3bbf8	-	linux64,win64	COPYING
+50-dvd/50-libdvdnav	git	https://code.videolan.org/videolan/libdvdnav.git	9c5f2278eb5b23cdcd0575065f5d575c4e6602a4	-	linux64,win64	COPYING
+50-ffnvcodec/ffnvcodec	git	https://github.com/FFmpeg/nv-codec-headers.git	15ee32753c92faddbabbff11676779618fc6db7e	-	linux64,win64	include/ffnvcodec/nvEncodeAPI.h@1-26
+50-ffnvcodec/ffnvcodec2	git	https://github.com/FFmpeg/nv-codec-headers.git	33a9ede8d9914299d9262539c576a15bd0a19621	-	linux64,win64	include/ffnvcodec/nvEncodeAPI.h@1-26
+50-ffnvcodec/ffnvcodec3	git	https://github.com/FFmpeg/nv-codec-headers.git	afae1834257b919848c5deb21a17c7355616b1ee	-	linux64,win64	include/ffnvcodec/nvEncodeAPI.h@1-26
+50-frei0r	git	https://github.com/dyne/frei0r.git	253addfd4bea3c90b0bf765589ca28ea18f3ddc0	-	linux64,win64	COPYING
+50-gme	git	https://github.com/libgme/game-music-emu.git	dd3182a8bdae3ff761438632aace418fbcaed439	-	linux64,win64	license.gpl2.txt,license.txt
+50-kvazaar	git	https://github.com/ultravideo/kvazaar.git	d6815293f34a094e26ba6c50b8644660ddc13e09	-	linux64,win64	LICENSE,LICENSE.EXT.greatest
+50-libaribcaption	git	https://github.com/xqq/libaribcaption.git	f9d8c50fe5e51c98d101f69d74591295cb568036	-	linux64,win64	LICENSE
+50-libass	git	https://github.com/libass/libass.git	4a05d8127f525943ebf45fdc6497c9e665947f0d	-	linux64,win64	COPYING
+50-libbluray	git	https://code.videolan.org/videolan/libbluray.git	8b4fb6e2562bb86601ea5a2c4140af6d8f3f1cf4	-	linux64,win64	COPYING
+50-libjxl/45-brotli	git	https://github.com/google/brotli.git	27cc9fe9a4aa8901be3b3ba29f2f09eaddb08f97	-	linux64,win64	LICENSE
+50-libjxl/45-lcms2	git	https://github.com/mm2/Little-CMS.git	5cc0eec7ae8350dd0f6c4c07b077f78f18dfe970	-	linux64,win64	LICENSE
+50-libjxl/50-libjxl	git	https://github.com/libjxl/libjxl.git	f0a1c5ff9dbba51ffa932433ffb80e5e6b6e22a7	submodules=third_party/highway	linux64,win64	LICENSE,PATENTS,third_party/highway/LICENSE,third_party/highway/LICENSE-BSD3
+50-libmp3lame	svn	https://svn.code.sf.net/p/lame/svn/trunk/lame	6531	tree=d63092883b0ecd8d556efa645a636774763cc1477d5bc6ddf4db66d4d3d91dba,snapshot=https://sourceforge.net/code-snapshots/svn/l/la/lame/svn/lame-svn-r6531-trunk-lame.zip	linux64,win64	COPYING,LICENSE
+50-libopus	git	https://github.com/xiph/opus.git	3da9f7a6db1c05c3996cb363a9d1931a978bf1be	-	linux64,win64	COPYING,LICENSE_PLEASE_READ.txt
+50-libopus/opus_data-a5177ec6fb7d15058e99e57029746100121f68e4890b1467d4094aa336b6013e.tar.gz	file	https://media.xiph.org/opus/models/opus_data-a5177ec6fb7d15058e99e57029746100121f68e4890b1467d4094aa336b6013e.tar.gz	a5177ec6fb7d15058e99e57029746100121f68e4890b1467d4094aa336b6013e	-	linux64,win64	-
+50-libplacebo	git	https://code.videolan.org/videolan/libplacebo.git	05ac2cca6571c04d06369a26825d207781b73f32	submodules	linux64,win64	LICENSE,3rdparty/glad/LICENSE,3rdparty/fast_float/LICENSE-APACHE,3rdparty/fast_float/LICENSE-BOOST,3rdparty/fast_float/LICENSE-MIT,3rdparty/Vulkan-Headers/LICENSE.md
+50-librist/40-mbedtls	git	https://github.com/ARMmbed/mbedtls.git	0fe989b6b514192783c469039edd325fd0989806	submodules	linux64,win64	LICENSE,tf-psa-crypto/LICENSE,tf-psa-crypto/drivers/pqcp/mldsa-native/LICENSE
+50-librist/50-librist	git	https://code.videolan.org/rist/librist.git	6e2a5e341bbdbe4ca283f3f79e42db8be0f2e027	-	linux64,win64	COPYING
+50-libssh	git	https://gitlab.com/libssh/libssh-mirror.git	689d7320644bbf06f77911a58d41a68e3e68675b	-	linux64,win64	COPYING
+50-libtheora	git	https://github.com/xiph/theora.git	28fd5ec77f0ad0e07a371cef1047828116f6bd8a	-	linux64,win64	COPYING,LICENSE
+50-libvpx	git	https://chromium.googlesource.com/webm/libvpx	8592391cdb3ef142c56d835788d71d6d4de36a63	-	linux64,win64	LICENSE,PATENTS
+50-libwebp	git	https://chromium.googlesource.com/webm/libwebp	733c91e461c18cf1127c9ed0a80dccbcfed599d3	-	linux64,win64	COPYING,PATENTS
+50-libzmq	git	https://github.com/zeromq/libzmq.git	2e8a6ccb414ca79636392604893c79c3b0d00dc4	-	linux64,win64	LICENSE
+50-lilv/96-lv2	git	https://github.com/lv2/lv2.git	3c57dae600a5ad8d05acd53ee3490f7d91cb7be6	-	linux64,win64	COPYING
+50-lilv/96-serd	git	https://github.com/drobilla/serd.git	b6053bb2a4533e6a8e3821c1061f140d5e666938	-	linux64,win64	COPYING
+50-lilv/96-zix	git	https://github.com/drobilla/zix.git	17d632393f5addb6fa24dda2927b96515407cca7	-	linux64,win64	COPYING
+50-lilv/97-sord	git	https://github.com/drobilla/sord.git	4b5232bb91e7f2f1b84df384494d073fabbcd312	-	linux64,win64	COPYING
+50-lilv/98-sratom	git	https://github.com/lv2/sratom.git	9e8ee84eed502e6030ce8bb49694fd28542b08fc	-	linux64,win64	COPYING
+50-lilv/99-lilv	git	https://github.com/lv2/lilv.git	4b8f30055fa5cb4134a2eb45fc1555bc04289314	-	linux64,win64	COPYING
+50-onevpl	git	https://github.com/intel/libvpl.git	d77f9195cf495b937631607333288fd917ae8939	-	linux64,win64	LICENSE
+50-openal	git	https://github.com/kcat/openal-soft.git	93358135d92f3aa2672ed95f9c6bb04f8482d578	-	linux64,win64	COPYING,LICENSE-pffft
+50-opencore-amr	git	https://git.code.sf.net/p/opencore-amr/code	7dba8c32238418ce0b316a852b2224df586ca896	-	linux64,win64	LICENSE
+50-openh264	git	https://github.com/cisco/openh264.git	a8e04adb69c79757da014007d4694684a64c7b74	-	linux64,win64	LICENSE
+50-openjpeg	git	https://github.com/uclouvain/openjpeg.git	9dd4b3c98a78f50a48fb08f27bf198d4ae1d8528	-	linux64,win64	LICENSE
+50-openmpt	git	https://github.com/OpenMPT/openmpt.git	4c3ba47c7977fe3016b474f8ed192e619ae85f7d	-	linux64,win64	LICENSE
+50-rav1e	git	https://github.com/xiph/rav1e.git	564ae3b0007ae2b06893fd7166bf88c5a84c5b63	-	linux64,win64	LICENSE,PATENTS
+50-rav1e/vendor	crates	https://static.crates.io/crates	50-rav1e/Cargo.lock	-	linux64,win64	*
+50-rubberband	git	https://github.com/breakfastquay/rubberband.git	e4296ac80b1170018a110bc326fd0d45a0eb27d6	-	linux64,win64	COPYING
+50-sdl	git	https://github.com/libsdl-org/SDL.git	b8b3f5ef2001cbe7c11f62d41a9bf47d4a2d8b07	-	linux64,win64	LICENSE.txt
+50-snappy	git	https://github.com/google/snappy.git	3ac3722e1bee4b99860a282fb779e8e72fa18163	-	linux64,win64	COPYING,COPYING.notestdata
+50-soxr	git	https://git.code.sf.net/p/soxr/code	945b592b70470e29f917f4de89b4281fbbd540c0	-	linux64,win64	COPYING.LGPL,LICENCE
+50-srt	git	https://github.com/Haivision/srt.git	c39196c9a568ae4e3289dd65cf54ba4154deb4a1	-	linux64,win64	LICENSE
+50-svtav1	git	https://gitlab.com/AOMediaCodec/SVT-AV1.git	d3c4cb3947a8bfed0aa5a2be996b37bb117fa1bd	-	linux64,win64	LICENSE-BSD2.md,LICENSE.md,PATENTS.md
+50-twolame	git	https://github.com/njh/twolame.git	6fced852d4d5cfad58cf9dbe3ea619b08e87d398	-	linux64,win64	COPYING
+50-uavs3d	git	https://github.com/uavs3/uavs3d.git	0e20d2c291853f196c68922a264bcd8471d75b68	-	linux64,win64	COPYING
+50-vaapi/30-libpciaccess	git	https://gitlab.freedesktop.org/xorg/lib/libpciaccess.git	38e6f15f839fba2c49982e7ad61cde681fd5d4d6	-	linux64	COPYING
+50-vaapi/40-libdrm	git	https://gitlab.freedesktop.org/mesa/drm.git	35c7c536d5d1c0124a416a531df4432508d7d2f1	-	linux64	xf86drm.h@8-32
+50-vaapi/50-libva	git	https://github.com/intel/libva.git	28388a091187e2ba9e99cb750ec7426f91f73cbb	-	linux64,win64	COPYING
+50-vidstab	git	https://github.com/georgmartius/vid.stab.git	92bc0b0f369f2a88aaacf25eac3a10f8415308fc	-	linux64,win64	LICENSE
+50-vvenc	git	https://github.com/fraunhoferhhi/vvenc.git	7d60406c66fa1659b8df74dd8d62bc41d3c90157	-	linux64,win64	LICENSE.txt
+50-x264	git	https://code.videolan.org/videolan/x264.git	0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee	-	linux64,win64	COPYING
+50-x265	git	https://bitbucket.org/multicoreware/x265_git.git	b81f650e21e8aacbe6a9ad04ce14aefc05b932c0	-	linux64,win64	COPYING
+50-xavs2	git	https://github.com/pkuvcl/xavs2.git	eae1e8b9d12468059bdd7dee893508e470fa83d8	-	linux64,win64	COPYING
+50-xvid	svn	https://svn.xvid.org/trunk/xvidcore	2204	tree=6c41fa9a6e3e70db64aae08e03e4f02a139d4175cd0c0cdc8447246de541329a	linux64,win64	LICENSE
+50-zimg	git	https://github.com/sekrit-twc/zimg.git	b3647572a01927e2aa8d0b7aaa917207c9c1ae5d	submodules	linux64,win64	COPYING,graphengine/COPYING
+50-zvbi	git	https://github.com/zapping-vbi/zvbi	41477c97c8edf7a01f1594b2a95b94f0117eed21	-	linux64,win64	COPYING.md

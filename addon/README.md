@@ -51,4 +51,7 @@ Naming exactly `stagepack` or `slidev-addon-stagepack` in `addons:` does not mak
 `addons: [stagepack]` on one line, or as `addons:` with `  - stagepack` on the next, so that `stagepack pack`'s
 quick check recognises it too.
 
+To turn a `.sptx` file into a PowerPoint file, right-click it: see
+[Export to PowerPoint](https://github.com/Eiriksb/stagepack#export-to-powerpoint).
+
 Needs Slidev 53 or later. MIT licensed.

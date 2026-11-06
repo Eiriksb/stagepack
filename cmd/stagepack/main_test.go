@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -17,6 +18,7 @@ import (
 	"stagepack/internal/app"
 	"stagepack/internal/brand"
 	"stagepack/internal/deck"
+	"stagepack/internal/export"
 	"stagepack/internal/install"
 	"stagepack/internal/ui"
 	"stagepack/internal/version"
@@ -438,6 +440,78 @@ func TestVersionCommand(t *testing.T) {
 		}
 		if got := strings.TrimSpace(so.String()); got != version.Version {
 			t.Errorf("%s printed %q, want %q", arg, got, version.Version)
+		}
+	}
+}
+
+func fakeExport(t *testing.T, ret error) *[]export.Options {
+	t.Helper()
+	var got []export.Options
+	old := exportDeck
+	exportDeck = func(ctx context.Context, o export.Options) (export.Result, error) {
+		got = append(got, o)
+		return export.Result{}, ret
+	}
+	t.Cleanup(func() { exportDeck = old })
+	return &got
+}
+
+func TestExportPptxCommand(t *testing.T) {
+	got := fakeExport(t, nil)
+	var so, se bytes.Buffer
+	deck := "x" + brand.Ext
+	if code := run([]string{"export-pptx", "--animations", "--trust-code", "--yes", "--home", "/h", deck}, &so, &se); code != 0 {
+		t.Fatalf("exit %d: %s", code, se.String())
+	}
+	o := (*got)[0]
+	if o.Home != "/h" || o.DeckPath != deck || !o.Animations || !o.TrustCode || !o.Replace || o.Dialogs != nil || o.GOOS != goos {
+		t.Fatalf("Export got %+v", o)
+	}
+	// FILE first; plain flags off; headless gets dialogs
+	if code := run([]string{"export-pptx", deck, "--headless", "--home", "/h"}, &so, &se); code != 0 {
+		t.Fatalf("exit %d: %s", code, se.String())
+	}
+	o = (*got)[1]
+	if o.Animations || o.TrustCode || o.Replace || o.Dialogs == nil {
+		t.Fatalf("Export got %+v", o)
+	}
+}
+
+func TestExportPptxUsageErrors(t *testing.T) {
+	got := fakeExport(t, nil)
+	var so, se bytes.Buffer
+	for _, args := range [][]string{
+		{"export-pptx", "--home", "/h"},
+		{"export-pptx", "--home", "/h", "a" + brand.Ext, "b" + brand.Ext},
+		{"export-pptx", "--bogus", "a" + brand.Ext},
+	} {
+		if code := run(args, &so, &se); code != 2 {
+			t.Errorf("%v: exit %d, want 2", args, code)
+		}
+	}
+	if len(*got) != 0 {
+		t.Errorf("export ran: %+v", *got)
+	}
+}
+
+func TestExportPptxExitCodes(t *testing.T) {
+	for _, c := range []struct {
+		err  error
+		want int
+	}{
+		{nil, 0},
+		{errors.New("boom"), 1},
+		{export.ErrCancelled, 3},
+		{export.ErrNotTrusted, 3},
+		{export.ErrBusy, 4},
+		{export.ErrNoBrowser, 5},
+		{fmt.Errorf("wrapped: %w", export.ErrNoBrowser), 5},
+		{fmt.Errorf("wrapped: %w", export.ErrBusy), 4},
+	} {
+		fakeExport(t, c.err)
+		var so, se bytes.Buffer
+		if code := run([]string{"export-pptx", "--home", "/h", "x" + brand.Ext}, &so, &se); code != c.want {
+			t.Errorf("%v: exit %d, want %d", c.err, code, c.want)
 		}
 	}
 }

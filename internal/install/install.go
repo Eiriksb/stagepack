@@ -61,6 +61,11 @@ func RegistryPlan(exe, icon string) []RegValue {
 		{progKey, "", brand.Name + " talk"},
 		{progKey + `\DefaultIcon`, "", `"` + icon + `"`},
 		{progKey + `\shell\open\command`, "", `"` + exe + `" open "%1"`},
+		{progKey + `\shell`, "", "open"},
+		{progKey + `\shell\exportpptx`, "MUIVerb", "Export to PowerPoint (editable)"},
+		{progKey + `\shell\exportpptx\command`, "", `"` + exe + `" export-pptx "%1"`},
+		{progKey + `\shell\exportpptxanim`, "MUIVerb", "Export to PowerPoint (with animations)"},
+		{progKey + `\shell\exportpptxanim\command`, "", `"` + exe + `" export-pptx --animations "%1"`},
 		{uninstallKey, "DisplayName", brand.Name},
 		{uninstallKey, "DisplayVersion", version.Version},
 		{uninstallKey, "UninstallString", `"` + exe + `" uninstall`},
@@ -138,6 +143,9 @@ func errTalkOpen(deck string) error {
 	return fmt.Errorf("%s is open: stop it first (tray icon, Stop)", filepath.Base(deck))
 }
 
+// errExportRunning is the error for an export to PowerPoint that runs from home: it works in the runtime.
+var errExportRunning = errors.New("An export to PowerPoint is running: wait for it to finish, or cancel it.")
+
 func install(home string, payload fs.FS, self string, reg assoc) error {
 	home, err := filepath.Abs(home) // the registry must not hold a relative path
 	if err != nil {
@@ -145,6 +153,9 @@ func install(home string, payload fs.FS, self string, reg assoc) error {
 	}
 	if deck, open := openTalk(home); open {
 		return errTalkOpen(deck)
+	}
+	if len(instance.RunningExports(home)) > 0 {
+		return errExportRunning
 	}
 	if err := os.MkdirAll(home, 0o755); err != nil {
 		return err
@@ -398,7 +409,7 @@ const (
 )
 
 // ownedEntries are the names in home that Install and the viewer create.
-var ownedEntries = []string{"node", "runtimes", "instances", "logs", "browser", trust.FileName}
+var ownedEntries = []string{"node", "runtimes", "ffmpeg", "instances", "logs", "browser", trust.FileName}
 
 // uninstall reports left when the running program (self) is in home and so
 // could not be deleted.
@@ -412,6 +423,9 @@ func uninstall(home, self string, reg assoc) (left bool, err error) {
 	}
 	if deck, open := openTalk(home); open {
 		return false, errTalkOpen(deck)
+	}
+	if len(instance.RunningExports(home)) > 0 {
+		return false, errExportRunning
 	}
 	// Move node/ out of the way first: it cannot be moved while a talk runs, and then
 	// nothing has been changed, in the registry or on disk.

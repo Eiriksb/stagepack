@@ -4,8 +4,10 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -40,6 +42,11 @@ func TestRegistryPlan(t *testing.T) {
 		{classes + brand.ProgID, "", brand.Name + " talk"},
 		{classes + brand.ProgID + `\DefaultIcon`, "", `"` + testIcon + `"`},
 		{classes + brand.ProgID + `\shell\open\command`, "", `"` + testExe + `" open "%1"`},
+		{classes + brand.ProgID + `\shell`, "", "open"},
+		{classes + brand.ProgID + `\shell\exportpptx`, "MUIVerb", "Export to PowerPoint (editable)"},
+		{classes + brand.ProgID + `\shell\exportpptx\command`, "", `"` + testExe + `" export-pptx "%1"`},
+		{classes + brand.ProgID + `\shell\exportpptxanim`, "MUIVerb", "Export to PowerPoint (with animations)"},
+		{classes + brand.ProgID + `\shell\exportpptxanim\command`, "", `"` + testExe + `" export-pptx --animations "%1"`},
 		{uninst, "DisplayName", brand.Name},
 		{uninst, "DisplayVersion", version.Version},
 		{uninst, "UninstallString", `"` + testExe + `" uninstall`},
@@ -72,6 +79,19 @@ func TestRegistryCommandQuotesPath(t *testing.T) {
 	want := `"C:\Users\Åse\AppData\Local\` + brand.Name + `\stagepack.exe" open "%1"`
 	if got != want {
 		t.Errorf("command = %s, want %s", got, want)
+	}
+}
+
+func TestRegistryExportCommandsQuotePath(t *testing.T) {
+	plan := RegistryPlan(testExe, testExe)
+	q := `"C:\Users\Åse\AppData\Local\` + brand.Name + `\stagepack.exe"`
+	for verb, want := range map[string]string{
+		"exportpptx":     q + ` export-pptx "%1"`,
+		"exportpptxanim": q + ` export-pptx --animations "%1"`,
+	} {
+		if got := mustFind(t, plan, `HKCU\Software\Classes\`+brand.ProgID+`\shell\`+verb+`\command`, ""); got != want {
+			t.Errorf("%s = %s, want %s", verb, got, want)
+		}
 	}
 }
 
@@ -258,6 +278,7 @@ func TestUninstallKeepsJournal(t *testing.T) {
 	write(t, home, "journal/x.json", "notes")
 	write(t, home, "node/node.exe", "n")
 	write(t, home, "runtimes/53/package.json", "{}")
+	write(t, home, "ffmpeg/ffmpeg.exe", "f")
 	write(t, home, "logs/a.log", "l")
 	write(t, home, "instances/a.json", "{}")
 	write(t, home, trust.FileName, "{}")
@@ -269,7 +290,7 @@ func TestUninstallKeepsJournal(t *testing.T) {
 	if got := read(t, home, "journal/x.json"); got != "notes" {
 		t.Errorf("journal = %q", got)
 	}
-	for _, rel := range []string{"node", "runtimes", "logs", "instances", trust.FileName, ".install-old-1", ExeName(), markerName()} {
+	for _, rel := range []string{"node", "runtimes", "ffmpeg", "logs", "instances", trust.FileName, ".install-old-1", ExeName(), markerName()} {
 		if exists(home, rel) {
 			t.Errorf("%s survived the uninstall", rel)
 		}
@@ -533,6 +554,46 @@ func TestDirPayloadShowsOnlyTheRuntime(t *testing.T) {
 	}
 }
 
+// The ffmpeg/ beside the runtime (the PowerPoint export's) is part of the payload when the build has it; a
+// build without it still installs (TestDirPayloadShowsOnlyTheRuntime).
+func TestDirPayloadCarriesFFmpeg(t *testing.T) {
+	build := t.TempDir()
+	for _, rel := range []string{"node/bin/node", "runtimes/53/package.json", "ffmpeg/ffmpeg", "ffmpeg/LICENSE.txt",
+		"other/x", ExeName()} {
+		write(t, build, rel, "x")
+	}
+	home := filepath.Join(t.TempDir(), "home")
+	p, ok := dirPayload(build, home)
+	if !ok {
+		t.Fatal("no payload in a build folder with ffmpeg/")
+	}
+	var got []string
+	fs.WalkDir(p, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !d.IsDir() {
+			got = append(got, path)
+		}
+		return nil
+	})
+	want := []string{"ffmpeg/LICENSE.txt", "ffmpeg/ffmpeg", "node/bin/node", "runtimes/53/package.json"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("payload files = %q, want %q", got, want)
+	}
+	if err := installFiles(home, p); err != nil {
+		t.Fatal(err)
+	}
+	for _, rel := range []string{"ffmpeg/ffmpeg", "ffmpeg/LICENSE.txt", "node/bin/node"} {
+		if !exists(home, rel) {
+			t.Errorf("%s not installed", rel)
+		}
+	}
+	if exists(home, "other") {
+		t.Error("a folder that is not part of the runtime was installed")
+	}
+}
+
 func TestInstallAndUninstallRefuseWhileATalkIsOpen(t *testing.T) {
 	old := openTalk
 	t.Cleanup(func() { openTalk = old })
@@ -551,5 +612,43 @@ func TestInstallAndUninstallRefuseWhileATalkIsOpen(t *testing.T) {
 	}
 	if got := read(t, home, "node/node.exe"); got != "n" || reg.written != nil || reg.deleted {
 		t.Errorf("something changed: node %q, registry %v %v", got, reg.written, reg.deleted)
+	}
+}
+
+func TestInstallAndUninstallRefuseWhileAnExportRuns(t *testing.T) {
+	home := t.TempDir()
+	installedHome(t, home)
+	write(t, home, "node/node.exe", "n")
+	write(t, home, "instances/abc.export", strconv.Itoa(os.Getpid())+"\n"+filepath.Join(home, "runtimes", "53", "work", "x"))
+	self := filepath.Join(t.TempDir(), "s")
+	write(t, filepath.Dir(self), "s", "x")
+	reg := &fakeRegistry{}
+	if err := install(home, payloadFS("2"), self, reg); err == nil || !strings.Contains(err.Error(), "An export to PowerPoint is running: wait for it to finish, or cancel it.") {
+		t.Errorf("install: %v", err)
+	}
+	if _, err := uninstall(home, "", reg); err == nil || !strings.Contains(err.Error(), "An export to PowerPoint is running") {
+		t.Errorf("uninstall: %v", err)
+	}
+	if got := read(t, home, "node/node.exe"); got != "n" || reg.written != nil || reg.deleted {
+		t.Errorf("something changed: node %q, registry %v %v", got, reg.written, reg.deleted)
+	}
+}
+
+func TestInstallAndUninstallGoAheadWhenAnExportsProcessIsGone(t *testing.T) {
+	gone := exec.Command(os.Args[0], "-test.run=NONE")
+	if err := gone.Run(); err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	installedHome(t, home)
+	write(t, home, "instances/abc.export", strconv.Itoa(gone.Process.Pid))
+	self := filepath.Join(t.TempDir(), "s")
+	write(t, filepath.Dir(self), "s", "x")
+	reg := &fakeRegistry{}
+	if err := install(home, payloadFS("2"), self, reg); err != nil {
+		t.Errorf("install: %v", err)
+	}
+	if _, err := uninstall(home, "", reg); err != nil {
+		t.Errorf("uninstall: %v", err)
 	}
 }
