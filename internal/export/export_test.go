@@ -1102,3 +1102,88 @@ func TestExportWithoutABrowserSaysWhatToInstall(t *testing.T) {
 		h.checkNothingLeft(t, filepath.Join(h.dir, "talk.pptx"))
 	}
 }
+
+// tempSeen is what the Run in the Windows test saw of its TEMP folder.
+type tempSeen struct {
+	temp    string
+	existed bool
+	slides  string
+}
+
+func TestExportOnWindowsGivesTheExporterATempFolderAndRemovesIt(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		play func(context.Context, string, func(Event)) error
+		stop bool
+	}{
+		{"done", finishes(0), false},
+		{"failed", fails("boom"), false},
+		{"cancelled", blocks(false), true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h := newHarness(t, c.play)
+			h.d.fake = true
+			o := h.options(false)
+			o.GOOS = "windows"
+			var seen tempSeen
+			inner := o.Run
+			o.Run = func(ctx context.Context, cmd *exec.Cmd, out string, on func(Event)) error {
+				for _, e := range cmd.Env {
+					if v, ok := strings.CutPrefix(e, "TEMP="); ok {
+						seen.temp = v
+					}
+					if v, ok := strings.CutPrefix(e, "TMP="); ok && v != seen.temp {
+						t.Errorf("TMP = %q, TEMP = %q", v, seen.temp)
+					}
+				}
+				if fi, err := os.Stat(seen.temp); seen.temp != "" && err == nil && fi.IsDir() {
+					seen.existed = true
+				}
+				seen.slides = cmd.Args[2]
+				return inner(ctx, cmd, out, on)
+			}
+			errc := make(chan error, 1)
+			go func() { _, err := Export(context.Background(), o); errc <- err }()
+			if c.stop {
+				h.run.waitStarted(t)
+				h.d.box(t).cancel()
+			}
+			wait(t, errc)
+			if seen.temp == "" {
+				t.Fatal("Run got no TEMP folder")
+			}
+			if !seen.existed {
+				t.Errorf("%s did not exist while Run ran", seen.temp)
+			}
+			if _, err := os.Stat(seen.temp); err == nil {
+				t.Errorf("%s left behind", seen.temp)
+			}
+			// Not under the folder Slidev serves, nor the deck's folder.
+			workDir := filepath.Dir(seen.slides)
+			for _, bad := range []string{workDir, h.dir} {
+				if rel, err := filepath.Rel(bad, seen.temp); err == nil && !strings.HasPrefix(rel, "..") {
+					t.Errorf("%s is inside %s", seen.temp, bad)
+				}
+			}
+		})
+	}
+}
+
+func TestExportOnLinuxGivesTheExporterNoTempFolder(t *testing.T) {
+	h := newHarness(t, finishes(0))
+	h.d.fake = true
+	o := h.options(false)
+	o.GOOS = "linux"
+	t.Setenv("TEMP", "/orig")
+	t.Setenv("TMP", "/orig")
+	if _, err := Export(context.Background(), o); err != nil {
+		t.Fatal(err)
+	}
+	h.run.mu.Lock()
+	defer h.run.mu.Unlock()
+	for _, e := range h.run.cmds[0].Env {
+		if (strings.HasPrefix(e, "TEMP=") || strings.HasPrefix(e, "TMP=")) && !strings.HasSuffix(e, "=/orig") {
+			t.Errorf("env has %s", e)
+		}
+	}
+}

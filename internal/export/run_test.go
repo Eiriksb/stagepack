@@ -128,6 +128,43 @@ func TestCommandArgsAndEnv(t *testing.T) {
 	}
 }
 
+func TestCommandSetsTheTempFolderOnlyWhenGiven(t *testing.T) {
+	p := Paths{Node: "/n/node", CLI: "/r/cli.mjs"}
+	has := func(cmd *exec.Cmd, kv string) bool {
+		for _, e := range cmd.Env {
+			if e == kv {
+				return true
+			}
+		}
+		return false
+	}
+	cmd := Command(p, Job{Slides: "/w/slides.md", Out: "/o/deck.pptx", TempDir: "/t/tmp-1"})
+	for _, kv := range []string{"TEMP=/t/tmp-1", "TMP=/t/tmp-1"} {
+		if !has(cmd, kv) {
+			t.Errorf("env lacks %s", kv)
+		}
+	}
+	// Later entries win in an environment: ours must come last.
+	t.Setenv("TEMP", "/elsewhere")
+	t.Setenv("TMP", "/elsewhere")
+	cmd = Command(p, Job{Slides: "/w/slides.md", Out: "/o/deck.pptx", TempDir: "/t/tmp-1"})
+	last := map[string]string{}
+	for _, e := range cmd.Env {
+		if k, v, ok := strings.Cut(e, "="); ok && (k == "TEMP" || k == "TMP") {
+			last[k] = v
+		}
+	}
+	if last["TEMP"] != "/t/tmp-1" || last["TMP"] != "/t/tmp-1" {
+		t.Errorf("TEMP/TMP = %v", last)
+	}
+	cmd = Command(p, Job{Slides: "/w/slides.md", Out: "/o/deck.pptx"})
+	for _, e := range cmd.Env {
+		if strings.HasPrefix(e, "TEMP=/t") || strings.HasPrefix(e, "TMP=/t") {
+			t.Errorf("env has %s without a temp folder", e)
+		}
+	}
+}
+
 func TestPathsFor(t *testing.T) {
 	cli := filepath.Join("/h", "runtimes", strconv.Itoa(slidevrt.Major()), "node_modules", "slidev-pptx-export", "bin", "cli.mjs")
 	// Node's own layouts, as opening has them: bin/node on Linux, node.exe at the top on Windows.

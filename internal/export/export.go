@@ -158,7 +158,13 @@ func Export(ctx context.Context, o Options) (Result, error) {
 		return Result{}, err
 	}
 	var work workspace.Work
+	var tempDir string
 	cleanup := sync.OnceFunc(func() {
+		if tempDir != "" {
+			if err := os.RemoveAll(tempDir); err != nil {
+				log.Printf("remove the exporter's temporary folder: %v", err)
+			}
+		}
 		if work.Dir != "" {
 			if err := workspace.Remove(work); err != nil {
 				log.Printf("remove the work folder: %v", err)
@@ -230,8 +236,17 @@ func Export(ctx context.Context, o Options) (Result, error) {
 		return Result{}, ErrNotTrusted
 	}
 
-	// 5. Run the exporter; what it says for people goes to the log.
-	cmd := Command(paths, Job{Slides: filepath.Join(work.Dir, work.Manifest.Entry), Out: out, Animations: o.Animations})
+	// 5. Run the exporter; what it says for people goes to the log. On
+	// Windows a cancel kills it at once, so its own clean-up of the recording
+	// frames and the browser profile never runs: they go in a folder of ours,
+	// next to the work folder and not under the one Slidev serves. Linux keeps
+	// its TMPDIR, which a long path would make Chrome abort on.
+	if o.GOOS == "windows" {
+		if tempDir, err = os.MkdirTemp(rtDir, "export-temp-"); err != nil {
+			return fail(fmt.Sprintf("Couldn't export %s: %s.", file, firstLine(err.Error())), err)
+		}
+	}
+	cmd := Command(paths, Job{Slides: filepath.Join(work.Dir, work.Manifest.Entry), Out: out, Animations: o.Animations, TempDir: tempDir})
 	logDir := filepath.Join(home, "logs")
 	lf, err := openLog(filepath.Join(logDir, "export-"+instance.Key(deckPath)+".log"), deckPath, out)
 	if err != nil {

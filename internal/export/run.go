@@ -40,10 +40,13 @@ func PathsFor(home, goos string) Paths {
 	}
 }
 
-// Job is one export: Slides is the slides file in the work folder.
+// Job is one export: Slides is the slides file in the work folder. TempDir,
+// when set, is where the exporter puts its temporary files: it becomes TEMP
+// and TMP in its environment.
 type Job struct {
 	Slides, Out string
 	Animations  bool
+	TempDir     string
 }
 
 // Event is one progress line from the exporter.
@@ -77,6 +80,9 @@ func Command(p Paths, j Job) *exec.Cmd {
 	cmd.Env = append(os.Environ(), "SLIDEV_PPTX_FFMPEG="+p.FFmpeg)
 	if p.Browser != "" {
 		cmd.Env = append(cmd.Env, "SLIDEV_PPTX_BROWSER="+p.Browser)
+	}
+	if j.TempDir != "" {
+		cmd.Env = append(cmd.Env, "TEMP="+j.TempDir, "TMP="+j.TempDir) // Node's os.tmpdir() on Windows
 	}
 	return cmd
 }
