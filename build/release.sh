@@ -77,6 +77,9 @@ winstamped() {
 pack() {
 	cd "$root"
 	local lin="$root/dist/linux" win="$root/dist/windows"
+	# a dist runtime made from an older runtime/ would ship its old exporter
+	"$here/runtime-stamp.sh" check linux || die "dist/linux/runtimes/$major was built from a different runtime/: run make runtime OS=linux"
+	"$here/runtime-stamp.sh" check win32 || die "dist/windows/runtimes/$major was built from a different runtime/: run make runtime OS=win32"
 	for f in "$lin/stagepack" "$lin/node/bin/node" "$lin/runtimes/$major/node_modules" "$lin/ffmpeg/ffmpeg" \
 		"$win/Stagepack-Setup.exe" "$win/PRESENTER.txt"; do
 		[ -e "$f" ] || die "missing $f: run 'make release VERSION=$ver'"
@@ -103,11 +106,11 @@ pack() {
 	done
 
 	# One top folder, files sorted, owner and times fixed (the commit's time): the same input gives the same
-	# bytes. A talk being shown (runtimes/<major>/work) and the viewer's own state (logs, journal, ...) stay out.
+	# bytes. A talk being shown (runtimes/<major>/work), the runtime's stamp and the viewer's own state (logs, journal, ...) stay out.
 	local when
 	when="$(git log -1 --format=%ct)"
 	tar --create --format=gnu --sort=name --mtime="@$when" --owner=0 --group=0 --numeric-owner \
-		--anchored --no-wildcards-match-slash --exclude="runtimes/*/work" \
+		--anchored --no-wildcards-match-slash --exclude="runtimes/*/work" --exclude="runtimes/*/.runtime-stamp" \
 		--transform="s,^,$tarname/,S" \
 		-C "$lin" stagepack node runtimes ffmpeg \
 		-C "$root" LICENSE |

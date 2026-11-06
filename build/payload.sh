@@ -21,7 +21,7 @@ command -v zip >/dev/null || { echo "zip is not installed" >&2; exit 1; }
 
 stored=".woff:.woff2:.ttf:.otf:.png:.jpg:.jpeg:.gif:.webp:.avif:.ico:.mp4:.webm:.mp3:.ogg:.zip:.gz:.tgz"
 rm -f "$out" "$out.part"
-# a talk being shown (runtimes/<major>/work) is not part of the product
-(cd "$src" && zip -qr -X -n "$stored" "$out.part" node runtimes ffmpeg stagepack.exe -x 'runtimes/*/work/*')
+# a talk being shown (runtimes/<major>/work) and the runtime's stamp are not part of the product
+(cd "$src" && zip -qr -X -n "$stored" "$out.part" node runtimes ffmpeg stagepack.exe -x 'runtimes/*/work/*' 'runtimes/*/.runtime-stamp')
 mv "$out.part" "$out"
 echo "wrote $out ($(du -h "$out" | cut -f1), $(unzip -l "$out" | tail -1 | awk '{print $2}') files)"

@@ -368,7 +368,7 @@ In `test/convert.test.mjs`: after converting the kitchen-sink fixture into an em
 ### Task 17: Pin the published exporter and open the PRs
 
 - [ ] **Step 1 (the user):** merge slidev-pptx-export PRs #3, #2, #4 and Part A's PR, and publish a new version to npm.
-- [ ] **Step 2:** `runtime/package.json`: `"slidev-pptx-export": "<published version>"`; remove `runtime/vendor/`; `npm install --package-lock-only`; `make build-linux build-windows`.
+- [ ] **Step 2:** `runtime/package.json`: `"slidev-pptx-export": "<published version>"`; remove `runtime/vendor/`; `npm install --package-lock-only`; the dist runtimes are rebuilt from the new lock (`make build-linux build-windows` does it by itself: a dist runtime whose `.runtime-stamp` is not that of `runtime/` is rebuilt, and `build/release.sh pack` refuses one; or `make runtime OS=linux` and `make runtime OS=win32`); `make build-linux build-windows`.
 - [ ] **Step 3:** Run `go test ./... && make licenses-go` and repeat Task 15 Step 2. Expected: PASS, same results.
 - [ ] **Step 4:** Commit `Runtime: slidev-pptx-export <version>`; push `claude/export-pptx`; open the Stagepack PR. The body says what was checked (Linux end to end, GNOME right-click as the user reported it, desktop PowerPoint as the user reported it) and what wasn't (Stagepack on a real Windows machine, if still not done).
 

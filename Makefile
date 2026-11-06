@@ -110,25 +110,26 @@ setup: viewer
 	build/payload.sh
 	GOOS=windows GOARCH=amd64 $(GO) build -tags payload -trimpath -ldflags "-H=windowsgui -s -w $(GO_LDFLAGS)" -o dist/windows/$(SETUP_NAME) ./cmd/stagepack
 
-# The finished builds. The 600 MB node/ and runtimes/ are made only when they are missing (they depend on
-# the directories, not on a phony rebuild); `make node runtime OS=...` forces them again. ffmpeg/ is copied
+# The finished builds. The 600 MB node/ is made only when it is missing, and the runtime when it is missing or its
+# .runtime-stamp (build/runtime-stamp.sh) is not that of runtime/ now; `make node runtime OS=...` forces them again. ffmpeg/ is copied
 # from .cache/ each time (`make programs`), and build/programs.sh checks the programs beside the viewer.
 LINUX_NODE := dist/linux/node/bin/node
-LINUX_RUNTIME := dist/linux/runtimes/53/node_modules/@slidev/cli/bin/slidev.mjs
+LINUX_RUNTIME := linux-runtime
 WIN_NODE := dist/windows/node/node.exe
-WIN_RUNTIME := dist/windows/runtimes/53/node_modules/@slidev/cli/bin/slidev.mjs
+WIN_RUNTIME := win-runtime
 
 $(LINUX_NODE):
 	$(MAKE) node OS=linux
 
+.PHONY: $(LINUX_RUNTIME) $(WIN_RUNTIME)
 $(LINUX_RUNTIME):
-	$(MAKE) runtime OS=linux
+	build/runtime-stamp.sh check linux || $(MAKE) runtime OS=linux
 
 $(WIN_NODE):
 	$(MAKE) node OS=win32
 
 $(WIN_RUNTIME):
-	$(MAKE) runtime OS=win32
+	build/runtime-stamp.sh check win32 || $(MAKE) runtime OS=win32
 
 # dist/linux/stagepack with node/, runtimes/ and ffmpeg/ beside it: the layout `stagepack open`,
 # `stagepack export-pptx` and the e2e tests expect
