@@ -504,6 +504,8 @@ func TestExportPptxExitCodes(t *testing.T) {
 		{export.ErrCancelled, 3},
 		{export.ErrNotTrusted, 3},
 		{export.ErrBusy, 4},
+		{export.ErrNoBrowser, 5},
+		{fmt.Errorf("wrapped: %w", export.ErrNoBrowser), 5},
 		{fmt.Errorf("wrapped: %w", export.ErrBusy), 4},
 	} {
 		fakeExport(t, c.err)

@@ -20,7 +20,9 @@ import (
 	slidevrt "stagepack/runtime"
 )
 
-// Paths are the programs the exporter needs, all under the app's home folder.
+// Paths are the programs the exporter needs. All but Browser are under the
+// app's home folder; Browser is the Chrome, Edge or Chromium already on the
+// computer, set by Export, and empty when there is none.
 type Paths struct{ Node, CLI, Browser, FFmpeg string }
 
 // PathsFor lays out the files under home for the given GOOS. Node keeps its
@@ -32,10 +34,9 @@ func PathsFor(home, goos string) Paths {
 		exe, node = ".exe", filepath.Join(home, "node", "node.exe")
 	}
 	return Paths{
-		Node:    node,
-		CLI:     filepath.Join(home, "runtimes", strconv.Itoa(slidevrt.Major()), "node_modules", "slidev-pptx-export", "bin", "cli.mjs"),
-		Browser: filepath.Join(home, "browser-shell", "chrome-headless-shell"+exe),
-		FFmpeg:  filepath.Join(home, "ffmpeg", "ffmpeg"+exe),
+		Node:   node,
+		CLI:    filepath.Join(home, "runtimes", strconv.Itoa(slidevrt.Major()), "node_modules", "slidev-pptx-export", "bin", "cli.mjs"),
+		FFmpeg: filepath.Join(home, "ffmpeg", "ffmpeg"+exe),
 	}
 }
 
@@ -70,7 +71,10 @@ func Command(p Paths, j Job) *exec.Cmd {
 	args = append(args, "--progress", "json")
 	cmd := exec.Command(p.Node, args...)
 	cmd.Dir = filepath.Dir(j.Slides)
-	cmd.Env = append(os.Environ(), "SLIDEV_PPTX_BROWSER="+p.Browser, "SLIDEV_PPTX_FFMPEG="+p.FFmpeg)
+	cmd.Env = append(os.Environ(), "SLIDEV_PPTX_FFMPEG="+p.FFmpeg)
+	if p.Browser != "" {
+		cmd.Env = append(cmd.Env, "SLIDEV_PPTX_BROWSER="+p.Browser)
+	}
 	return cmd
 }
 

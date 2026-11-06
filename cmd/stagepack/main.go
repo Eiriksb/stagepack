@@ -254,6 +254,9 @@ func runExportPptx(args []string, stdout, stderr io.Writer) int {
 	case errors.Is(err, export.ErrBusy):
 		fmt.Fprintf(stderr, "%s: %v\n", brand.Name, err)
 		return 4
+	case errors.Is(err, export.ErrNoBrowser):
+		fmt.Fprintf(stderr, "%s: %v\n", brand.Name, err)
+		return 5
 	case errors.Is(err, export.ErrCancelled):
 		fmt.Fprintf(stderr, "%s: %v\n", brand.Name, err)
 		return 3

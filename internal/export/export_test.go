@@ -328,6 +328,7 @@ func newHarness(t *testing.T, play func(context.Context, string, func(Event)) er
 func (h *harness) options(animations bool) Options {
 	return Options{
 		Home: h.home, DeckPath: h.deck, Animations: animations, Dialogs: h.d, GOOS: runtime.GOOS, Run: h.run.run,
+		FindBrowser: func() (string, bool) { return "/usr/bin/fake-chrome", true },
 		Open: func(p string) error {
 			h.mu.Lock()
 			defer h.mu.Unlock()
@@ -1059,4 +1060,45 @@ func TestExportTakesOverALockOlderThanSixHours(t *testing.T) {
 		t.Errorf("Run called %d times, want 1", h.run.calls())
 	}
 	h.checkCleanedUp(t)
+}
+
+func TestExportUsesTheBrowserItFinds(t *testing.T) {
+	h := newHarness(t, finishes(0))
+	o := h.options(false)
+	o.FindBrowser = func() (string, bool) { return "/opt/browser/chrome", true }
+	if _, err := Export(context.Background(), o); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(h.run.cmds[0].Env, "SLIDEV_PPTX_BROWSER=/opt/browser/chrome") {
+		t.Errorf("env lacks the found browser: %q", h.run.cmds[0].Env)
+	}
+}
+
+func TestExportWithoutABrowserSaysWhatToInstall(t *testing.T) {
+	for goos, want := range map[string]string{
+		"linux":   "Exporting to PowerPoint needs Chrome, Edge or Chromium. Install one and try again.",
+		"windows": "Exporting to PowerPoint needs Microsoft Edge or Chrome.",
+	} {
+		h := newHarness(t, finishes(0))
+		o := h.options(false)
+		o.GOOS = goos
+		o.FindBrowser = func() (string, bool) { return "", false }
+		_, err := Export(context.Background(), o)
+		if !errors.Is(err, ErrNoBrowser) {
+			t.Fatalf("%s: err = %v, want ErrNoBrowser", goos, err)
+		}
+		if !slices.Equal(h.d.errs, []string{want}) {
+			t.Errorf("%s: errors %q, want %q", goos, h.d.errs, want)
+		}
+		if h.run.calls() != 0 {
+			t.Errorf("%s: Run was called", goos)
+		}
+		if _, err := os.Stat(h.workDir()); err == nil {
+			ents, _ := os.ReadDir(h.workDir())
+			if len(ents) != 0 {
+				t.Errorf("%s: something was unpacked: %v", goos, ents)
+			}
+		}
+		h.checkNothingLeft(t, filepath.Join(h.dir, "talk.pptx"))
+	}
 }

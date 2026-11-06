@@ -138,6 +138,10 @@ Where the entries are:
 - **GNOME Files (Nautilus):** right-click, then **Scripts**. They are also under **Open With**.
 - **KDE (Dolphin):** in the right-click menu, as plain entries.
 
+The export draws with the Chrome, Edge or Chromium already on the computer (a Chromium that isn't a snap package;
+Windows has Edge). Without one, it says "Exporting to PowerPoint needs Chrome, Edge or Chromium. Install one and try
+again." (on Windows, "needs Microsoft Edge or Chrome") and nothing is written.
+
 A box shows the step ("Slide 4 of 11") and the time left, and has **Cancel**, which stops the export and leaves no
 half-written file. If `NAME.pptx` already exists, you are asked before it is replaced. If the folder can't be
 written, you are asked where to save. A presentation that contains code gets the same "contains code" question as
@@ -235,7 +239,7 @@ of it. Details are in [addon/README.md](addon/README.md).
 | `--trust-code` | run the presentation's own code without asking; only for presentations you trust |
 | `--yes` | replace an existing `.pptx` without asking |
 
-Exit codes: 0 done, 1 failed, 2 usage, 3 cancelled or code not trusted, 4 another export of that file is running.
+Exit codes: 0 done, 1 failed, 2 usage, 3 cancelled or code not trusted, 4 another export of that file is running, 5 no Chrome, Edge or Chromium found.
 The exporter is [slidev-pptx-export](https://github.com/Eiriksb/slidev-pptx-export); its config file, if the
 presentation carries one, applies as it does there.
 

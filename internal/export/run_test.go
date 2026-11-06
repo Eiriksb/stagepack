@@ -121,12 +121,31 @@ func TestPathsFor(t *testing.T) {
 	// Node's own layouts, as opening has them: bin/node on Linux, node.exe at the top on Windows.
 	for goos, want := range map[string]Paths{
 		"linux": {Node: filepath.Join("/h", "node", "bin", "node"), CLI: cli,
-			Browser: filepath.Join("/h", "browser-shell", "chrome-headless-shell"), FFmpeg: filepath.Join("/h", "ffmpeg", "ffmpeg")},
+			FFmpeg: filepath.Join("/h", "ffmpeg", "ffmpeg")},
 		"windows": {Node: filepath.Join("/h", "node", "node.exe"), CLI: cli,
-			Browser: filepath.Join("/h", "browser-shell", "chrome-headless-shell.exe"), FFmpeg: filepath.Join("/h", "ffmpeg", "ffmpeg.exe")},
+			FFmpeg: filepath.Join("/h", "ffmpeg", "ffmpeg.exe")},
 	} {
 		if got := PathsFor("/h", goos); got != want {
 			t.Errorf("%s paths\n%+v\nwant\n%+v", goos, got, want)
+		}
+	}
+}
+
+func TestPathsForLeavesBrowserEmpty(t *testing.T) {
+	for _, goos := range []string{"linux", "windows"} {
+		if b := PathsFor("/h", goos).Browser; b != "" {
+			t.Errorf("%s: Browser = %q, want empty", goos, b)
+		}
+	}
+}
+
+func TestCommandWithoutABrowserSetsNoBrowserVariable(t *testing.T) {
+	t.Setenv("SLIDEV_PPTX_BROWSER", "")
+	os.Unsetenv("SLIDEV_PPTX_BROWSER")
+	cmd := Command(Paths{Node: "/n", CLI: "/c", FFmpeg: "/f"}, Job{Slides: "/w/s.md", Out: "/o.pptx"})
+	for _, kv := range cmd.Env {
+		if strings.HasPrefix(kv, "SLIDEV_PPTX_BROWSER=") {
+			t.Errorf("env has %s", kv)
 		}
 	}
 }

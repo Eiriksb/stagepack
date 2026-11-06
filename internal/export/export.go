@@ -56,6 +56,9 @@ type Options struct {
 	Replace bool
 	// Run runs the exporter; default Run.
 	Run func(ctx context.Context, cmd *exec.Cmd, out string, onEvent func(Event)) error
+	// FindBrowser finds the Chrome, Edge or Chromium the export draws with;
+	// default browser.FindAppBrowser on this computer.
+	FindBrowser func() (string, bool)
 	// Open opens the finished file (default browser.Open), and Reveal shows
 	// it in its folder (default the file manager), for the finished box's
 	// buttons.
@@ -76,6 +79,9 @@ var (
 	// ErrCancelled is returned when the person said no to replacing the file,
 	// didn't say where to save it, or cancelled the export; nothing was written.
 	ErrCancelled = errors.New("export cancelled")
+	// ErrNoBrowser is returned when no Chrome, Edge or Chromium was found;
+	// nothing was unpacked or written.
+	ErrNoBrowser = errors.New("no Chrome, Edge or Chromium found")
 	// ErrNotTrusted is returned when the person chose not to run the
 	// presentation's code; nothing was run. It is app.ErrNotTrusted to errors.Is.
 	ErrNotTrusted error = notTrusted{}
@@ -108,6 +114,11 @@ func Export(ctx context.Context, o Options) (Result, error) {
 	if o.Run == nil {
 		o.Run = Run
 	}
+	if o.FindBrowser == nil {
+		o.FindBrowser = func() (string, bool) {
+			return browser.FindAppBrowser(runtime.GOOS, os.Getenv, exec.LookPath)
+		}
+	}
 	if o.Open == nil {
 		o.Open = browser.Open
 	}
@@ -124,6 +135,17 @@ func Export(ctx context.Context, o Options) (Result, error) {
 		return Result{}, err
 	}
 	file := filepath.Base(deckPath)
+
+	// 0. The browser comes first: without one nothing is taken, unpacked or written.
+	chrome, ok := o.FindBrowser()
+	if !ok {
+		if o.GOOS == "windows" {
+			d.Error(brand.Name, "Exporting to PowerPoint needs Microsoft Edge or Chrome.")
+		} else {
+			d.Error(brand.Name, "Exporting to PowerPoint needs Chrome, Edge or Chromium. Install one and try again.")
+		}
+		return Result{}, ErrNoBrowser
+	}
 
 	// 1. One export of a file at a time.
 	unlock, err := lock(home, deckPath)
@@ -186,6 +208,7 @@ func Export(ctx context.Context, o Options) (Result, error) {
 	// 4. The code it brought along runs only with the person's yes, given here
 	// or when it was opened (app.CodeCheck).
 	paths := PathsFor(home, o.GOOS)
+	paths.Browser = chrome
 	check := app.CodeCheck{Home: home, Node: paths.Node, RuntimeDir: rtDir, TrustCode: o.TrustCode, ReadHeadmatter: readHeadmatter,
 		Ask: func(question string) bool {
 			if rctx.Err() != nil {
