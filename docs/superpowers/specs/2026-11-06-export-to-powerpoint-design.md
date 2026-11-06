@@ -61,7 +61,7 @@ and the progress box.
 |---|---|---|
 | Windows (Explorer) | Right-click; on Windows 11 under "Show more options" | Two verbs under the existing ProgID in HKCU: `shell\exportpptx` and `shell\exportpptxanim`, each with `MUIVerb` and `command` (`"<exe>" export-pptx "%1"`, with `--animations` for the second). `RegistryPlan` in `internal/install/install.go` gains them. |
 | KDE (Dolphin) | Right-click, as plain entries | A service menu, `~/.local/share/kio/servicemenus/<AppID>-export.desktop`, `MimeType=application/x-stagepack`, with two actions. |
-| GNOME (Files) | Right-click → Scripts, and Open With | Two executable scripts in `~/.local/share/nautilus/scripts/` named after the entries, each running `stagepack export-pptx` on the selected file. Two `NoDisplay=true` desktop entries with the MIME type, so they appear under Open With. A plain top-level entry would need a Nautilus extension, which needs `python3-nautilus`: not used. |
+| GNOME (Files) | Right-click → Scripts | Two executable scripts in `~/.local/share/nautilus/scripts/` named after the entries, each running `stagepack export-pptx` on the selected file. No Open With entries: with a second desktop entry for the MIME type, xdg-mime's default lookup (which xdg-open uses outside GNOME and KDE) can fall back to an export, as it can't read the viewer's quoted `Exec`. An install removes the two that earlier installs wrote. A plain top-level entry would need a Nautilus extension, which needs `python3-nautilus`: not used. |
 
 `stagepack install` adds them, `stagepack uninstall` removes exactly them, as it does the rest. The wording is
 "Export to PowerPoint (editable)" and "Export to PowerPoint (with animations)".
@@ -148,8 +148,8 @@ These land as one PR on top of PR #4 (the animations), and need a published rele
   sharing what opening already has.
 - `internal/ui`: the progress box and the finished box on both platforms, plus a headless form for tests and
   scripts, as `ui.NewHeadless` does for opening.
-- `internal/install`: the registry verbs, the KDE service menu, the Nautilus scripts and the Open With entries,
-  added and removed with the rest.
+- `internal/install`: the registry verbs, the KDE service menu and the Nautilus scripts, added and removed with
+  the rest.
 - README: the right-click export under "For presenters" and the layout list; the Licences section, reworded (below);
   a line in "Install" saying the one-line installs now bring the export too, and the larger download. The addon
   README points to it.

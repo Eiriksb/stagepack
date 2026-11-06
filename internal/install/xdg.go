@@ -204,8 +204,18 @@ func xdgFiles(exe string) ([]xdgFile, error) {
 	return files, nil
 }
 
+// oldXDGFiles are files earlier installs wrote and this one does not: Install
+// and Uninstall remove them. The Open With entries of the exports went
+// because xdg-mime's default lookup, which xdg-open uses outside GNOME and KDE,
+// can't read the viewer's quoted Exec and falls back to the first entry with
+// the type, which was an export.
+var oldXDGFiles = []string{
+	"applications/" + brand.AppID + "-export.desktop",
+	"applications/" + brand.AppID + "-export-animations.desktop",
+}
+
 func ownedXDGFiles() []string {
-	rels := []string{mimeRel, desktopRel}
+	rels := append([]string{mimeRel, desktopRel}, oldXDGFiles...)
 	// The export entries' names do not depend on the program path.
 	exports, _ := exportFiles("/")
 	for _, f := range exports {
@@ -229,8 +239,8 @@ func shQuote(s string) string {
 }
 
 // exportFiles are the right-click entries that run `export-pptx` on a talk: a
-// KDE service menu (which KDE only trusts when executable), two Nautilus
-// scripts, and two desktop entries for Open With (hidden from the menu).
+// KDE service menu (which KDE only trusts when executable) and two Nautilus
+// scripts. There are no desktop entries for Open With (see oldXDGFiles).
 func exportFiles(exe string) ([]xdgFile, error) {
 	arg, err := desktopExecArg(exe)
 	if err != nil {
@@ -240,28 +250,21 @@ func exportFiles(exe string) ([]xdgFile, error) {
 		return nil, fmt.Errorf("the install folder holds a NUL: %q", exe)
 	}
 	variants := []struct {
-		name, flag, id, script string
+		name, flag, script string
 	}{
-		{exportEditableName, "", "", "editable"},
-		{exportAnimationsName, " --animations", "-animations", "animations"},
+		{exportEditableName, "", "editable"},
+		{exportAnimationsName, " --animations", "animations"},
 	}
 	menu := "[Desktop Entry]\nType=Service\nMimeType=" + brand.MIMEType + ";\n" +
 		"X-KDE-ServiceTypes=KonqPopupMenu/Plugin\nActions=editable;animations;\n"
 	var files []xdgFile
 	for _, v := range variants {
 		menu += "\n[Desktop Action " + v.script + "]\nName=" + v.name + "\nExec=" + arg + " export-pptx" + v.flag + " %f\n"
-		files = append(files,
-			xdgFile{
-				rel:  "nautilus/scripts/" + v.name,
-				data: []byte("#!/bin/sh\nfor f in \"$@\"; do " + shQuote(exe) + " export-pptx" + v.flag + " \"$f\"; done\n"),
-				mode: 0o755,
-			},
-			xdgFile{
-				rel: "applications/" + brand.AppID + "-export" + v.id + ".desktop",
-				data: []byte("[Desktop Entry]\nType=Application\nName=" + v.name + "\n" +
-					"Exec=" + arg + " export-pptx" + v.flag + " %f\n" +
-					"Icon=" + brand.AppID + "\nMimeType=" + brand.MIMEType + ";\nTerminal=false\nNoDisplay=true\nStartupNotify=false\n"),
-			})
+		files = append(files, xdgFile{
+			rel:  "nautilus/scripts/" + v.name,
+			data: []byte("#!/bin/sh\nfor f in \"$@\"; do " + shQuote(exe) + " export-pptx" + v.flag + " \"$f\"; done\n"),
+			mode: 0o755,
+		})
 	}
 	return append([]xdgFile{{rel: "kio/servicemenus/" + brand.AppID + "-export.desktop", data: []byte(menu), mode: 0o755}}, files...), nil
 }
@@ -361,6 +364,11 @@ func (x *xdgDesktop) register(exe string) error {
 	}
 	for _, f := range files {
 		if err := writeAtomicMode(filepath.Join(data, filepath.FromSlash(f.rel)), f.data, f.mode); err != nil {
+			return err
+		}
+	}
+	for _, rel := range oldXDGFiles {
+		if err := os.Remove(filepath.Join(data, filepath.FromSlash(rel))); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
 	}

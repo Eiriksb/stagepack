@@ -213,9 +213,13 @@ func TestXDGRegisterAndRemove(t *testing.T) {
 	if err := f.x.register(exe); err != nil {
 		t.Fatal(err)
 	}
-	for _, rel := range ownedXDGFiles() {
-		if !exists(f.data, rel) {
-			t.Errorf("%s not written", rel)
+	files, err := xdgFiles(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, xf := range files {
+		if !exists(f.data, xf.rel) {
+			t.Errorf("%s not written", xf.rel)
 		}
 	}
 	if got := read(t, f.data, mimeRel); got != mimePackage() {
@@ -396,29 +400,54 @@ func TestXDGFilesIncludeTheExportEntries(t *testing.T) {
 			t.Errorf("Nautilus script %q: %v, mode %v", name, ok, s.mode)
 		}
 	}
-	for rel, c := range map[string]struct{ name, args string }{
-		"applications/" + brand.AppID + "-export.desktop":            {ed, " export-pptx %f"},
-		"applications/" + brand.AppID + "-export-animations.desktop": {an, " export-pptx --animations %f"},
-	} {
-		f, ok := by[rel]
-		if !ok || f.mode != 0 {
-			t.Errorf("%s: %v, mode %v", rel, ok, f.mode)
-			continue
-		}
-		k := desktopKeys(t, string(f.data))
-		if k["Name"] != c.name || k["Exec"] != arg+c.args || k["NoDisplay"] != "true" || k["MimeType"] != brand.MIMEType+";" {
-			t.Errorf("%s = %v", rel, k)
+	// No Open With entries: with one, xdg-mime's default lookup (and so xdg-open) can fall back
+	// to an export, as xdg-utils can't read the viewer's quoted Exec.
+	for _, f := range files {
+		if strings.HasPrefix(f.rel, "applications/") && f.rel != desktopRel {
+			t.Errorf("%s is written: the viewer's entry is the only one with the type", f.rel)
 		}
 	}
-	// What is written is what Uninstall removes.
+	// What is written is what Uninstall removes, and it also removes the Open With entries an
+	// older install wrote.
 	owned := ownedXDGFiles()
 	for _, f := range files {
 		if !slices.Contains(owned, f.rel) {
 			t.Errorf("%s is written but not removed", f.rel)
 		}
 	}
-	if len(owned) != len(files) {
-		t.Errorf("%d owned, %d written", len(owned), len(files))
+	for _, rel := range oldOpenWith {
+		if !slices.Contains(owned, rel) {
+			t.Errorf("%s, left by an older install, is not removed", rel)
+		}
+	}
+	if len(owned) != len(files)+len(oldOpenWith) {
+		t.Errorf("%d owned, %d written and %d left by older installs", len(owned), len(files), len(oldOpenWith))
+	}
+}
+
+// oldOpenWith are the Open With entries for the exports that earlier installs wrote.
+var oldOpenWith = []string{
+	"applications/" + brand.AppID + "-export.desktop",
+	"applications/" + brand.AppID + "-export-animations.desktop",
+}
+
+// Installing over an earlier install takes away the Open With entries it wrote, before the
+// desktop's caches are renewed.
+func TestRegisterRemovesTheOldOpenWithEntries(t *testing.T) {
+	f := newFakeDesktop(t)
+	for _, rel := range oldOpenWith {
+		write(t, f.data, rel, "[Desktop Entry]\nType=Application\nMimeType="+brand.MIMEType+";\n")
+	}
+	if err := f.x.register("/x/stagepack"); err != nil {
+		t.Fatal(err)
+	}
+	for _, rel := range oldOpenWith {
+		if exists(f.data, rel) {
+			t.Errorf("%s left behind", rel)
+		}
+	}
+	if !exists(f.data, desktopRel) {
+		t.Errorf("%s not written", desktopRel)
 	}
 }
 
@@ -488,15 +517,22 @@ func TestUninstallRemovesTheExportEntries(t *testing.T) {
 		"kio/servicemenus/" + brand.AppID + "-export.desktop",
 		"nautilus/scripts/Export to PowerPoint (editable)",
 		"nautilus/scripts/Export to PowerPoint (with animations)",
-		"applications/" + brand.AppID + "-export.desktop",
-		"applications/" + brand.AppID + "-export-animations.desktop",
 	} {
 		if !exists(f.data, rel) {
 			t.Errorf("%s not written", rel)
 		}
 	}
+	for _, rel := range oldOpenWith {
+		if exists(f.data, rel) {
+			t.Errorf("%s written", rel)
+		}
+	}
 	if fi, _ := os.Stat(filepath.Join(f.data, "kio/servicemenus/"+brand.AppID+"-export.desktop")); fi == nil || fi.Mode().Perm() != 0o755 {
 		t.Errorf("service menu mode %v", fi)
+	}
+	// An older install's Open With entries go too.
+	for _, rel := range oldOpenWith {
+		write(t, f.data, rel, "[Desktop Entry]\nType=Application\nMimeType="+brand.MIMEType+";\n")
 	}
 	if err := f.x.remove(); err != nil {
 		t.Fatal(err)
@@ -511,5 +547,10 @@ func TestUninstallRemovesTheExportEntries(t *testing.T) {
 	}
 	if exists(f.data, "nautilus/scripts/Export to PowerPoint (editable)") {
 		t.Error("our script left behind")
+	}
+	for _, rel := range oldOpenWith {
+		if exists(f.data, rel) {
+			t.Errorf("%s left behind", rel)
+		}
 	}
 }

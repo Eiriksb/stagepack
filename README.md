@@ -135,7 +135,7 @@ Right-click a `.sptx` file and choose one of two entries:
 Where the entries are:
 
 - **Windows:** in the right-click menu. Windows 11 shows them under **Show more options**.
-- **GNOME Files (Nautilus):** right-click, then **Scripts**. They are also under **Open With**.
+- **GNOME Files (Nautilus):** right-click, then **Scripts**.
 - **KDE (Dolphin):** in the right-click menu, as plain entries.
 
 The export draws with the Chrome, Edge or Chromium already on the computer (a Chromium that isn't a snap package;
@@ -422,8 +422,6 @@ icons/hicolor/{256x256,48x48,32x32,16x16}/apps/stagepack.png   the icon (from as
 kio/servicemenus/stagepack-export.desktop         the two export entries in KDE's right-click menu
 nautilus/scripts/Export to PowerPoint (editable)  the two export entries under GNOME Files' Scripts
 nautilus/scripts/Export to PowerPoint (with animations)
-applications/stagepack-export.desktop             the same two, hidden entries that show under Open With
-applications/stagepack-export-animations.desktop
 ```
 
 and runs `update-mime-database`, `update-desktop-database` and `xdg-mime default stagepack.desktop
