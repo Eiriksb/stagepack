@@ -4,12 +4,18 @@
 #           tag vVERSION, if there is one, is this commit. Offline.
 #   pack    dist/release/vVERSION/ from dist/linux and dist/windows (`make release` builds those first):
 #             Stagepack-Setup.exe, PRESENTER.txt                the Windows installer and its guide
-#             stagepack-VERSION-linux-x64.tar.xz               dist/linux (program, node/, runtimes/) and LICENSE
-#             SHA256SUMS                                       of the three
+#             stagepack-VERSION-linux-x64.tar.xz               dist/linux (program, node/, runtimes/, browser-shell/,
+#                                                              ffmpeg/) and LICENSE
+#             chrome-headless-shell-*.zip, ffmpeg-*-gpl-*      the bundled programs' archives, as downloaded
+#             node-*.tar.xz, chromium-*-lite.tar.xz, FFmpeg-*, the bundled programs' sources (build/programs.tsv),
+#               FFmpeg-Builds-*, ffmpeg-*-libraries-source.*     from .cache/dl (`make sources`)
+#             SHA256SUMS                                       of all of the above
 #             RELEASE_NOTES.md                                 the text of the GitHub release
 #             npm/stagepack-VERSION.tgz                        the npm launcher (npm/), SHA256SUMS inside
 #             npm/slidev-addon-stagepack-VERSION.tgz           the Slidev export addon (addon/)
-#           Offline. The tarball is the same bytes for the same dist/linux and commit.
+#           Offline. The tarball is the same bytes for the same dist/linux and commit. The programs' archives and
+#           sources are mirrored because their download hosts prune old builds, and the GPL and LGPL ask for the
+#           source beside the binaries.
 #   github  creates the GitHub release vVERSION from dist/release/vVERSION. The commit must be on origin.
 #           Online; it publishes.
 # PRERELEASE=1 (at pack) adds a pre-release note to the release text. It does not set GitHub's pre-release
@@ -20,6 +26,8 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(dirname "$here")"
 repo=Eiriksb/stagepack
 major=53 # runtime.Major(); a test checks the two agree
+# shellcheck source=versions.env
+. "$here/versions.env"
 
 cmd="${1:-}"
 ver="${2:-}"
@@ -31,6 +39,14 @@ tag="v$ver"
 out="$root/dist/release/$tag"
 tarname="stagepack-$ver-linux-x64"
 assets=(Stagepack-Setup.exe PRESENTER.txt "$tarname.tar.xz")
+# the bundled programs as downloaded, and their sources (build/fetch.sh names them so in .cache/dl)
+mirrored=(
+	"chrome-headless-shell-${CHROMIUM_SHELL_VERSION}-linux64.zip" "chrome-headless-shell-${CHROMIUM_SHELL_VERSION}-win64.zip"
+	"${FFMPEG_URL_LINUX_X64##*/}" "${FFMPEG_URL_WIN_X64##*/}"
+	"node-v${NODE_VERSION}.tar.xz" "${CHROMIUM_SOURCE_URL##*/}" "FFmpeg-${FFMPEG_COMMIT}.tar.gz"
+	"FFmpeg-Builds-${FFMPEG_BUILDS_COMMIT}.tar.gz" "ffmpeg-${FFMPEG_VERSION}-libraries-source.tar.xz"
+)
+assets+=("${mirrored[@]}")
 
 die() { echo "$*" >&2; exit 1; }
 
@@ -61,8 +77,14 @@ winstamped() {
 pack() {
 	cd "$root"
 	local lin="$root/dist/linux" win="$root/dist/windows"
-	for f in "$lin/stagepack" "$lin/node/bin/node" "$lin/runtimes/$major/node_modules" "$win/Stagepack-Setup.exe" "$win/PRESENTER.txt"; do
+	for f in "$lin/stagepack" "$lin/node/bin/node" "$lin/runtimes/$major/node_modules" "$lin/browser-shell/chrome-headless-shell" \
+		"$lin/ffmpeg/ffmpeg" "$win/Stagepack-Setup.exe" "$win/PRESENTER.txt"; do
 		[ -e "$f" ] || die "missing $f: run 'make release VERSION=$ver'"
+	done
+	for f in "${mirrored[@]}"; do
+		[ -f "$root/.cache/dl/$f" ] || die "missing .cache/dl/$f: run 'make sources'"
+		# GitHub takes release assets up to 2 GiB
+		[ "$(stat -c %s "$root/.cache/dl/$f")" -lt 2147483648 ] || die ".cache/dl/$f is 2 GiB or more: too large for a release asset"
 	done
 	[ "$("$lin/stagepack" version)" = "$ver" ] || die "$lin/stagepack is not built as $ver: run 'make release VERSION=$ver'"
 	winstamped "$win/Stagepack-Setup.exe" || die "$win/Stagepack-Setup.exe is not built as $ver: run 'make release VERSION=$ver'"
@@ -70,6 +92,10 @@ pack() {
 	rm -rf "$out"
 	mkdir -p "$out/npm"
 	cp "$win/Stagepack-Setup.exe" "$win/PRESENTER.txt" "$out/"
+	# linked rather than copied where the file system allows it (Chromium's source alone is 2 GB)
+	for f in "${mirrored[@]}"; do
+		ln "$root/.cache/dl/$f" "$out/$f" 2>/dev/null || cp "$root/.cache/dl/$f" "$out/$f"
+	done
 
 	# One top folder, files sorted, owner and times fixed (the commit's time): the same input gives the same
 	# bytes. A talk being shown (runtimes/<major>/work) and the viewer's own state (logs, journal, ...) stay out.
@@ -78,7 +104,7 @@ pack() {
 	tar --create --format=gnu --sort=name --mtime="@$when" --owner=0 --group=0 --numeric-owner \
 		--anchored --no-wildcards-match-slash --exclude="runtimes/*/work" \
 		--transform="s,^,$tarname/,S" \
-		-C "$lin" stagepack node runtimes \
+		-C "$lin" stagepack node runtimes browser-shell ffmpeg \
 		-C "$root" LICENSE |
 		xz -T0 -6 >"$out/$tarname.tar.xz.part"
 	mv "$out/$tarname.tar.xz.part" "$out/$tarname.tar.xz"
@@ -141,6 +167,11 @@ Or download \`$tarname.tar.xz\` ($size MB), check it against \`SHA256SUMS\`, unp
 
 **Authors:** \`npm i -D slidev-addon-stagepack\` and \`addons: [stagepack]\` in your talk's headmatter add an
 **Export as .sptx** button to Slidev's nav bar.
+
+The other files are the programs Stagepack ships for the PowerPoint export, as downloaded (Playwright's
+headless Chromium, ffmpeg), and the source of every program it ships beside the viewer (Node, Chromium,
+ffmpeg and the libraries linked into it). Their licences are in \`runtimes/$major/THIRD_PARTY_LICENSES.txt\`
+in the install.
 
 Everything installs for the current user only. See the README for details and how to uninstall.
 EOF
