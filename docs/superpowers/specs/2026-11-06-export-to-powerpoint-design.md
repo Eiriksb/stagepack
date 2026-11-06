@@ -10,7 +10,7 @@ Stagepack supports, for people who only installed Stagepack: no Node, no npm, no
 
 The export itself is [slidev-pptx-export](https://github.com/Eiriksb/slidev-pptx-export), which runs a Slidev
 deck in a browser and converts what it draws. Stagepack already carries Node and a pinned Slidev. This design adds
-the exporter, a headless browser for it and ffmpeg to what Stagepack ships, plus the menu, the command behind it
+the exporter and ffmpeg to what Stagepack ships, and uses the browser already on the computer, plus the menu, the command behind it
 and the progress box.
 
 ## Who decided what
@@ -19,10 +19,12 @@ and the progress box.
   who wants to turn a `.sptx` into a `.pptx` quickly; a choice of both exports (editable, and with animations); a
   progress box in the style of Stagepack's "Opening…" box, with the details of a step list folded into its text;
   no Node dependency, so the exporter ships inside Stagepack; ffmpeg bundled, so every platform gets videos for
-  clicks that move. After a reviewer's questions: a headless browser bundled on both platforms (most Linux
-  desktops have no browser Playwright can drive, and a bundled one sidesteps company policies on Edge and Chrome);
-  a GPL ffmpeg shipped as a separate program, with Stagepack's licence policy reworded to allow that; and the
-  animated export checked, and fixed where needed, in desktop PowerPoint as well as PowerPoint for the web.
+  clicks that move. After a reviewer's questions: a GPL ffmpeg shipped as a separate program, with Stagepack's
+  licence policy reworded to allow that; and the animated export checked, and fixed where needed, in desktop
+  PowerPoint as well as PowerPoint for the web. During the build (2026-11-06), on seeing that the bundled browser
+  would be Google's "Chrome for Testing" with Google's terms, and that its source came to 2 GB: no bundled browser,
+  the export uses the Chrome, Edge or Chromium already on the computer; and a release carries only the source the
+  licences require.
 - **The author's calls, open to correction:** everything below that the user did not say, including the file
   names, the menu wording, the progress protocol and the platform mechanics.
 
@@ -32,7 +34,8 @@ and the progress box.
   **Export to PowerPoint (editable)** or **Export to PowerPoint (with animations)**.
 - A progress box shows what is happening and roughly how long is left, and can be cancelled.
 - The result is `<name>.pptx` or `<name>-animations.pptx` next to the `.sptx`, with **Open** and **Show in folder**.
-- Nothing to install beyond Stagepack, and no dependence on which browser the computer has. The export works
+- Nothing to install beyond Stagepack and a Chromium-family browser: Windows always has Edge; on Linux, Chrome,
+  Edge or a Chromium that isn't a snap. Without one, the export says what to install. The export works
   offline when the presentation does (map tiles from the internet need the network, as they do when presenting).
 - The animated export plays correctly in desktop PowerPoint on Windows as well as in PowerPoint for the web.
 
@@ -72,8 +75,10 @@ and the progress box.
 2. Unpacks the presentation with `workspace.Extract`, as opening does, under `runtimes/<major>/work/`.
 3. Asks the "contains code" question if the presentation has code and isn't trusted yet, with the same text,
    trust store and remembered answer as opening. A No ends the export with nothing written.
-4. Runs the exporter with Stagepack's Node, the runtime's pinned Slidev, the bundled headless browser and the
-   bundled ffmpeg; render mode for the editable export, `--animations` for the other.
+4. Runs the exporter with Stagepack's Node, the runtime's pinned Slidev, the browser `browser.FindAppBrowser`
+   returns (the one the presenter window uses; a snap browser is passed over) and the bundled ffmpeg; render mode
+   for the editable export, `--animations` for the other. With no such browser, it stops before unpacking with one
+   sentence naming what to install.
 5. Writes `<name>.pptx` or `<name>-animations.pptx` next to the `.sptx`. If that file exists, it asks before
    replacing it. If the folder can't be written, it asks where to save, using the existing save dialog.
 6. Removes the work folder, as closing a presentation does.
@@ -114,7 +119,7 @@ Small additions, each useful outside Stagepack too:
 
 - **The browser:** use `playwright-core` when neither `playwright-chromium` nor `playwright` is there, with an
   executable path given by a new `render.browser` option (and a matching environment variable). Stagepack points it
-  at its bundled headless browser.
+  at the computer's Chrome, Edge or Chromium.
 - **ffmpeg:** a new `render.ffmpeg` option (and environment variable) naming the ffmpeg program to use, for every
   use of ffmpeg: recording clips (`findEncoder`, tried before the PATH search) and also the editable export's
   animated pictures of a deck's own videos and its frame-rate reads (`src/render/animate.mjs`, which today calls
@@ -132,12 +137,6 @@ These land as one PR on top of PR #4 (the animations), and need a published rele
 
 - `runtime/package.json`: `slidev-pptx-export` and `playwright-core`, pinned, through the existing `npm ci` and
   `build/licenses.mjs` (both are Apache-2.0 or MIT; their dependencies must pass the same list).
-- `build/versions.env` and `build/fetch.sh`: Playwright's `chromium-headless-shell` build for Linux x64 and
-  Windows x64, at the revision the pinned `playwright-core` expects, with checksums, as for Node. It lands in
-  `dist/<os>/browser-shell/`, then in the payload and the install folder. It is mirrored in Stagepack's own release
-  assets, as ffmpeg is below, since Playwright's download host keeps old builds only for a while. Expect about
-  100 MB more per download; measure and state it in the README. Its third-party licences (Chromium's, including
-  its LGPL ffmpeg) go into the licence file under the reworded policy.
 - `build/versions.env` and `build/fetch.sh`: a pinned ffmpeg for Linux x64 and Windows x64, with checksums, as
   for Node. It lands in `dist/<os>/ffmpeg/`, then in the payload and the install folder as `ffmpeg/ffmpeg[.exe]`.
   ffmpeg.org publishes no binaries and third-party builds are pruned, so Stagepack's own release assets carry the
@@ -170,14 +169,13 @@ keeps its npm instructions for the CLI.
 ## Licences
 
 Stagepack's README says it "ships only permissively licensed components, plus the weak-copyleft exceptions", and
-that zenity and kdialog, being GPL, are "not linked or shipped". An ffmpeg that writes H.264 with libx264 is GPL,
-and the headless browser carries Chromium's own third-party code, including an LGPL ffmpeg.
+that zenity and kdialog, being GPL, are "not linked or shipped". An ffmpeg that writes H.264 with libx264 is GPL.
 
 Decided by the user: ship the GPL ffmpeg as a separate program and reword the policy. The new wording: the
 viewer and everything it links stay permissive (with the existing weak-copyleft exceptions); separate programs it
-runs as their own processes (Node, the headless browser, ffmpeg) may be under other open-source licences,
-including GPL and LGPL, shipped unmodified, each with its licence text in the third-party licence file and its exact
-source in Stagepack's release assets. `build/licenses.mjs` keeps checking the npm side as now; a new check lists
+runs as their own processes (Node, ffmpeg) may be under other open-source licences, including GPL and LGPL,
+shipped unmodified, each with its licence and notices in the third-party licence file and, where its licence
+requires it, its exact source in Stagepack's release assets. `build/licenses.mjs` keeps checking the npm side as now; a new check lists
 the bundled programs, their versions, licences and source archives, and fails when one is missing.
 
 ## Verification
