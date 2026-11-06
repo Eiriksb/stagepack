@@ -52,7 +52,7 @@ main() {
 		exit 1
 	fi
 
-	# Not /tmp: that is often a small tmpfs, and the unpacked build is about 800 MB.
+	# Not /tmp: that is often a small tmpfs, and the unpacked build is about 900 MB.
 	cache=${XDG_CACHE_HOME:-$HOME/.cache}
 	mkdir -p "$cache"
 	tmp=$(mktemp -d "$cache/stagepack-install.XXXXXX")

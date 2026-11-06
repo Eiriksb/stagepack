@@ -24,8 +24,8 @@ tests go, but see "Open items" below.
 Every channel installs the same build for the current user only, with no administrator rights or sudo,
 and registers `.sptx` files so they open with a double-click and offer the two PowerPoint exports (see "Export to
 PowerPoint" below). The exporter and ffmpeg come with the build; the export draws with the Chrome, Edge or Chromium
-already on the computer. ffmpeg makes the download larger: the Linux tarball is about 158 MB (118 MB without it)
-and `Stagepack-Setup.exe` about 240 MB (186 MB without it); installed, the viewer takes about 0.9 GB. Releases are at
+already on the computer. ffmpeg makes the download larger: the Linux tarball is about 160 MB (118 MB without it)
+and `Stagepack-Setup.exe` about 243 MB (186 MB without it); installed, the viewer takes about 0.9 GB. Releases are at
 [github.com/Eiriksb/stagepack/releases](https://github.com/Eiriksb/stagepack/releases).
 
 **Windows:** download `Stagepack-Setup.exe` from the latest release and run it (see "For presenters" below,
@@ -37,7 +37,7 @@ also about the "Windows protected your PC" warning).
 curl -fsSL https://raw.githubusercontent.com/Eiriksb/stagepack/main/install.sh | sh
 ```
 
-[`install.sh`](install.sh) downloads `stagepack-<version>-linux-x64.tar.xz` (about 158 MB) from the latest
+[`install.sh`](install.sh) downloads `stagepack-<version>-linux-x64.tar.xz` (about 160 MB) from the latest
 release and checks it against the release's `SHA256SUMS`. It unpacks it under `~/.cache` and runs
 `stagepack install --yes` from there, which copies it to `~/.local/share/stagepack`. It needs `tar`, `xz`,
 `sha256sum` and `curl` or `wget`. `STAGEPACK_VERSION=0.1.0` picks a given release. Arguments go on to
@@ -459,14 +459,14 @@ in Inter Variable.
 
 | size | Linux | Windows |
 |---|---|---|
-| `runtimes/53/node_modules` (685 packages) | 596 MB | 574 MB (27 393 files) |
+| `runtimes/53/node_modules` (731 packages) | 587 MB | 588 MB (27 674 files) |
 | `node/` | 208 MB | 110 MB |
 | `ffmpeg/` (ffmpeg 7.1, static, GPL, and the licences) | 135 MB | 134 MB |
 
 | download | without ffmpeg | with it |
 |---|---|---|
-| `stagepack-<version>-linux-x64.tar.xz` | 118 MB | 158 MB |
-| `Stagepack-Setup.exe` | 186 MB | 240 MB |
+| `stagepack-<version>-linux-x64.tar.xz` | 118 MB | 160 MB |
+| `Stagepack-Setup.exe` | 186 MB | 243 MB |
 
 ## Licences
 

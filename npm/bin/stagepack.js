@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The npm launcher for Stagepack. The viewer, its Node and the Slidev runtime (about 800 MB) are not in
+// The npm launcher for Stagepack. The viewer, its Node and the Slidev runtime (about 900 MB) are not in
 // this package: `stagepack install` downloads the build for this platform from the GitHub release of the
 // same version, checks it against the SHA256SUMS shipped in this package, and runs its own installer
 // (`stagepack install` from the Linux tarball, or Stagepack-Setup.exe on Windows). Every other command runs
@@ -108,7 +108,7 @@ async function download(url, file, sha256) {
   if (digest !== sha256) throw new Error(`${path.basename(file)} does not match its checksum (got ${digest}, want ${sha256})`);
 }
 
-// A temporary folder on disk: not /tmp on Linux, which is often a small tmpfs (the build unpacks to 800 MB).
+// A temporary folder on disk: not /tmp on Linux, which is often a small tmpfs (the build unpacks to about 900 MB).
 function tempDir() {
   const parent = win ? os.tmpdir() : process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache');
   fs.mkdirSync(parent, { recursive: true });
@@ -158,7 +158,7 @@ async function main() {
     return 0;
   }
   if (have === null) {
-    say(`Stagepack is not installed yet. Run: stagepack install (downloads about ${win ? 190 : 120} MB)`);
+    say(`Stagepack is not installed yet. Run: stagepack install (downloads about ${win ? 243 : 160} MB)`);
     return 1;
   }
   if (have !== VERSION && cmd !== 'uninstall') {

@@ -5,7 +5,7 @@ file that opens with a double-click, offline, in Slidev's presenter view. Edits 
 saved back into the file.
 
 This package is a small launcher. The viewer, with its own Node and a pinned Slidev runtime, is too big for
-npm (about 800 MB unpacked). So `stagepack install` downloads the build for your platform from the GitHub
+npm (about 900 MB unpacked). So `stagepack install` downloads the build for your platform from the GitHub
 release of the same version, checks it against the SHA-256 checksums shipped in this package, and installs
 it for the current user only, without administrator rights:
 
