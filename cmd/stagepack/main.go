@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 
 	"stagepack/internal/app"
 	"stagepack/internal/brand"
@@ -208,7 +210,7 @@ func runExportPptx(args []string, stdout, stderr io.Writer) int {
 	var animations, headless, trustCode, yes bool
 	var home string
 	fs.BoolVar(&animations, "animations", false, "export with animations (videos) instead of the editable slides")
-	fs.BoolVar(&headless, "headless", false, "no dialogs: questions and results as JSON lines on stdout")
+	fs.BoolVar(&headless, "headless", false, "no dialogs: questions and results as JSON lines on stdout; cancel with Ctrl-C or SIGTERM")
 	fs.BoolVar(&trustCode, "trust-code", false, "run the talk's own code without asking (only for talks you trust)")
 	fs.BoolVar(&yes, "yes", false, "replace an existing .pptx without asking")
 	fs.StringVar(&home, "home", "", "the viewer's folder (default: the folder of this program)")
@@ -247,7 +249,11 @@ func runExportPptx(args []string, stdout, stderr io.Writer) int {
 	if headless {
 		opts.Dialogs = export.HeadlessDialogs(stdout, yes)
 	}
-	_, err := exportDeck(context.Background(), opts)
+	// Ctrl-C or SIGTERM cancels the export as its box's Cancel does: the exporter is stopped
+	// and the work folder and the lock are removed, which a killed program leaves behind.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	_, err := exportDeck(ctx, opts)
 	switch {
 	case err == nil:
 		return 0

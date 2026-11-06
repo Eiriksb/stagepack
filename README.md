@@ -235,7 +235,7 @@ of it. Details are in [addon/README.md](addon/README.md).
 |---|---|
 | `--animations` | the animated copy, `NAME-animations.pptx` |
 | `--home DIR` | the viewer's folder (default: the folder of the program) |
-| `--headless` | no dialogs: questions and results are JSON lines on stdout |
+| `--headless` | no dialogs: questions and results are JSON lines on stdout; Ctrl-C or SIGTERM cancels |
 | `--trust-code` | run the presentation's own code without asking; only for presentations you trust |
 | `--yes` | replace an existing `.pptx` without asking |
 
