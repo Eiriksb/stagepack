@@ -14,6 +14,7 @@ import (
 
 	"stagepack/internal/app"
 	"stagepack/internal/brand"
+	"stagepack/internal/export"
 	"stagepack/internal/pack"
 	"stagepack/internal/ui"
 	"stagepack/internal/version"
@@ -21,7 +22,7 @@ import (
 
 var cmdName = strings.ToLower(brand.Name)
 
-var usage = "usage: " + cmdName + " {pack|open|install|uninstall|version} [args]"
+var usage = "usage: " + cmdName + " {pack|open|export-pptx|install|uninstall|version} [args]"
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -32,6 +33,9 @@ var goos = runtime.GOOS
 
 // openDeck is app.Open; tests replace it.
 var openDeck = app.Open
+
+// exportDeck is export.Export; tests replace it.
+var exportDeck = export.Export
 
 func run(args []string, stdout, stderr io.Writer) int {
 	// Windows starts the downloaded program with no arguments when it is double-clicked: install.
@@ -51,6 +55,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runPack(args[1:], stdout, stderr)
 	case "open":
 		return runOpen(args[1:], stdout, stderr)
+	case "export-pptx":
+		return runExportPptx(args[1:], stdout, stderr)
 	case "version", "--version":
 		fmt.Fprintln(stdout, version.Version)
 		return 0
@@ -189,4 +195,72 @@ func runOpen(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+var exportUsage = "usage: " + cmdName + " export-pptx [--animations] [--home DIR] [--headless] [--trust-code] [--yes] FILE"
+
+// runExportPptx exports a deck to PowerPoint: 0 done, 1 failed, 2 usage,
+// 3 cancelled or not trusted, 4 busy.
+func runExportPptx(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("export-pptx", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	fs.Usage = func() { fmt.Fprintln(stderr, exportUsage) }
+	var animations, headless, trustCode, yes bool
+	var home string
+	fs.BoolVar(&animations, "animations", false, "export with animations (videos) instead of the editable slides")
+	fs.BoolVar(&headless, "headless", false, "no dialogs: questions and results as JSON lines on stdout")
+	fs.BoolVar(&trustCode, "trust-code", false, "run the talk's own code without asking (only for talks you trust)")
+	fs.BoolVar(&yes, "yes", false, "replace an existing .pptx without asking")
+	fs.StringVar(&home, "home", "", "the viewer's folder (default: the folder of this program)")
+	var files []string
+	rest := args
+	for {
+		if err := fs.Parse(rest); err != nil {
+			if errors.Is(err, flag.ErrHelp) {
+				return 0
+			}
+			return 2
+		}
+		if fs.NArg() == 0 {
+			break
+		}
+		files = append(files, fs.Arg(0))
+		rest = fs.Args()[1:]
+	}
+	if len(files) != 1 {
+		fmt.Fprintln(stderr, exportUsage)
+		return 2
+	}
+	if home == "" {
+		exe, err := os.Executable()
+		if err == nil {
+			exe, err = filepath.EvalSymlinks(exe)
+		}
+		if err != nil {
+			fmt.Fprintf(stderr, "%s: find the viewer's folder: %v\n", brand.Name, err)
+			return 1
+		}
+		home = filepath.Dir(exe)
+	}
+	defer startLog(home)()
+	opts := export.Options{Home: home, DeckPath: files[0], Animations: animations, GOOS: goos, TrustCode: trustCode, Replace: yes}
+	if headless {
+		opts.Dialogs = export.HeadlessDialogs(stdout, yes)
+	}
+	_, err := exportDeck(context.Background(), opts)
+	switch {
+	case err == nil:
+		return 0
+	case errors.Is(err, export.ErrBusy):
+		fmt.Fprintf(stderr, "%s: %v\n", brand.Name, err)
+		return 4
+	case errors.Is(err, export.ErrCancelled):
+		fmt.Fprintf(stderr, "%s: %v\n", brand.Name, err)
+		return 3
+	case errors.Is(err, export.ErrNotTrusted):
+		fmt.Fprintf(stderr, "%s: %v\n(where nobody can be asked, as with --headless, export a talk you trust with --trust-code)\n", brand.Name, err)
+		return 3
+	}
+	fmt.Fprintf(stderr, "%s: %v\n", brand.Name, err)
+	return 1
 }
