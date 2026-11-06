@@ -761,8 +761,13 @@ func TestExportSameFileTwiceIsRefused(t *testing.T) {
 	errc := make(chan error, 1)
 	go func() { _, err := Export(ctx, h.options(false)); errc <- err }()
 	h.run.waitStarted(t)
-	if got := readFile(t, h.lockPath(h.deck)); got != strconv.Itoa(os.Getpid()) {
-		t.Errorf("the lock holds %q, want this PID", got)
+	got, ok := instance.ParseExportLock(readFile(t, h.lockPath(h.deck)))
+	if !ok || got.PID != os.Getpid() {
+		t.Errorf("the lock holds %+v, want this PID", got)
+	}
+	// and the work folder, so that opening a talk meanwhile keeps it
+	if rel, err := filepath.Rel(h.workDir(), got.WorkDir); err != nil || strings.Contains(rel, string(filepath.Separator)) || rel == "." || strings.HasPrefix(rel, "..") {
+		t.Errorf("the lock names work folder %q, want one under %s", got.WorkDir, h.workDir())
 	}
 
 	second := newScript()

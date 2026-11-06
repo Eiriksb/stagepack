@@ -4,8 +4,10 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -610,5 +612,43 @@ func TestInstallAndUninstallRefuseWhileATalkIsOpen(t *testing.T) {
 	}
 	if got := read(t, home, "node/node.exe"); got != "n" || reg.written != nil || reg.deleted {
 		t.Errorf("something changed: node %q, registry %v %v", got, reg.written, reg.deleted)
+	}
+}
+
+func TestInstallAndUninstallRefuseWhileAnExportRuns(t *testing.T) {
+	home := t.TempDir()
+	installedHome(t, home)
+	write(t, home, "node/node.exe", "n")
+	write(t, home, "instances/abc.export", strconv.Itoa(os.Getpid())+"\n"+filepath.Join(home, "runtimes", "53", "work", "x"))
+	self := filepath.Join(t.TempDir(), "s")
+	write(t, filepath.Dir(self), "s", "x")
+	reg := &fakeRegistry{}
+	if err := install(home, payloadFS("2"), self, reg); err == nil || !strings.Contains(err.Error(), "An export to PowerPoint is running: wait for it to finish, or cancel it.") {
+		t.Errorf("install: %v", err)
+	}
+	if _, err := uninstall(home, "", reg); err == nil || !strings.Contains(err.Error(), "An export to PowerPoint is running") {
+		t.Errorf("uninstall: %v", err)
+	}
+	if got := read(t, home, "node/node.exe"); got != "n" || reg.written != nil || reg.deleted {
+		t.Errorf("something changed: node %q, registry %v %v", got, reg.written, reg.deleted)
+	}
+}
+
+func TestInstallAndUninstallGoAheadWhenAnExportsProcessIsGone(t *testing.T) {
+	gone := exec.Command(os.Args[0], "-test.run=NONE")
+	if err := gone.Run(); err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	installedHome(t, home)
+	write(t, home, "instances/abc.export", strconv.Itoa(gone.Process.Pid))
+	self := filepath.Join(t.TempDir(), "s")
+	write(t, filepath.Dir(self), "s", "x")
+	reg := &fakeRegistry{}
+	if err := install(home, payloadFS("2"), self, reg); err != nil {
+		t.Errorf("install: %v", err)
+	}
+	if _, err := uninstall(home, "", reg); err != nil {
+		t.Errorf("uninstall: %v", err)
 	}
 }

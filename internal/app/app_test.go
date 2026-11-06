@@ -10,7 +10,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -728,4 +730,56 @@ func TestOpeningClosedWhenSlidevFailsToStart(t *testing.T) {
 		t.Errorf("errors shown = %q", fu.errs)
 	}
 	fu.checkOpening(t, "talk")
+}
+
+// agedWorkFolder makes <home>/runtimes/<major>/work/talk, 11 minutes old, and returns it with a session over home.
+func agedWorkFolder(t *testing.T) (s *session, dir string) {
+	t.Helper()
+	home := t.TempDir()
+	s = &session{o: Options{GOOS: runtime.GOOS}, home: home, rtDir: filepath.Join(home, "runtimes", "53")}
+	dir = filepath.Join(s.rtDir, "work", "talk")
+	if err := os.MkdirAll(filepath.Join(dir, "node_modules"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-11 * time.Minute)
+	if err := os.Chtimes(dir, old, old); err != nil {
+		t.Fatal(err)
+	}
+	return s, dir
+}
+
+func writeExportLock(t *testing.T, home string, l instance.ExportLock) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(home, "instances"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "instances", "abc.export"), []byte(l.Format()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCleanStaleKeepsTheWorkFolderOfARunningExport(t *testing.T) {
+	s, dir := agedWorkFolder(t)
+	writeExportLock(t, s.home, instance.ExportLock{PID: os.Getpid(), WorkDir: dir})
+	if err := workspace.CleanStale(s.rtDir, s.inUse()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Errorf("the work folder of a running export was removed: %v", err)
+	}
+}
+
+func TestCleanStaleRemovesTheWorkFolderOfAnExportThatIsGone(t *testing.T) {
+	s, dir := agedWorkFolder(t)
+	gone := exec.Command(os.Args[0], "-test.run=NONE")
+	if err := gone.Run(); err != nil {
+		t.Fatal(err)
+	}
+	writeExportLock(t, s.home, instance.ExportLock{PID: gone.Process.Pid, WorkDir: dir})
+	if err := workspace.CleanStale(s.rtDir, s.inUse()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the work folder of a dead export was kept: %v", err)
+	}
 }

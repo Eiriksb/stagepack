@@ -376,9 +376,9 @@ func openError(deckPath string, err error) (title, msg string) {
 }
 
 // inUse tells CleanStale which work folders to keep: young ones (an instance may
-// be starting in it) and those of live instances.
+// be starting in it), those of live instances and those of running exports.
 func (s *session) inUse() func(dir string) bool {
-	var live []instance.Record
+	var live []string
 	loaded := false
 	return func(dir string) bool {
 		if fi, err := os.Stat(dir); err == nil && time.Since(fi.ModTime()) < staleAge {
@@ -388,12 +388,17 @@ func (s *session) inUse() func(dir string) bool {
 			loaded = true
 			for _, r := range instance.List(s.home) {
 				if r.WorkDir != "" && instance.Alive(r) {
-					live = append(live, r)
+					live = append(live, r.WorkDir)
+				}
+			}
+			for _, e := range instance.RunningExports(s.home) {
+				if e.WorkDir != "" {
+					live = append(live, e.WorkDir)
 				}
 			}
 		}
-		for _, r := range live {
-			if instance.PathKey(r.WorkDir, s.o.GOOS) == instance.PathKey(dir, s.o.GOOS) {
+		for _, w := range live {
+			if instance.PathKey(w, s.o.GOOS) == instance.PathKey(dir, s.o.GOOS) {
 				return true
 			}
 		}

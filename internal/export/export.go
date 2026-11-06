@@ -148,7 +148,7 @@ func Export(ctx context.Context, o Options) (Result, error) {
 	}
 
 	// 1. One export of a file at a time.
-	unlock, err := lock(home, deckPath)
+	unlock, recordWork, err := lock(home, deckPath)
 	if errors.Is(err, ErrBusy) {
 		d.Error(brand.Name, "Already exporting "+file+".")
 		return Result{}, fmt.Errorf("%w %s", ErrBusy, file)
@@ -206,6 +206,10 @@ func Export(ctx context.Context, o Options) (Result, error) {
 	}
 	rtDir := filepath.Join(home, "runtimes", strconv.Itoa(slidevrt.Major()))
 	if work, err = workspace.Extract(deckPath, rtDir); err != nil {
+		return fail(fmt.Sprintf("Couldn't export %s: %s.", file, firstLine(err.Error())), err)
+	}
+	// Opening a talk, and an install or uninstall, look here to leave the folder alone.
+	if err := recordWork(work.Dir); err != nil {
 		return fail(fmt.Sprintf("Couldn't export %s: %s.", file, firstLine(err.Error())), err)
 	}
 	tracker.Unpacked()
@@ -312,12 +316,14 @@ func Export(ctx context.Context, o Options) (Result, error) {
 }
 
 // lock takes <home>/instances/<instance.Key(deck)>.export, made exclusively
-// and holding this process's PID. A lock whose PID no longer runs was left by
-// a killed export and is taken over; any other is ErrBusy.
-func lock(home, deckPath string) (unlock func(), err error) {
+// and holding this process's PID, and, once recordWork has been called, the
+// export's work folder, which `stagepack open` then leaves alone and which
+// keeps an install or uninstall from running. A lock whose PID no longer runs
+// was left by a killed export and is taken over; any other is ErrBusy.
+func lock(home, deckPath string) (unlock func(), recordWork func(dir string) error, err error) {
 	dir := filepath.Join(home, "instances")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	p := filepath.Join(dir, instance.Key(deckPath)+".export")
 	pid := strconv.Itoa(os.Getpid())
@@ -325,30 +331,53 @@ func lock(home, deckPath string) (unlock func(), err error) {
 		f, err := os.OpenFile(p, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 		if errors.Is(err, os.ErrExist) {
 			if !takeOver(p) {
-				return nil, ErrBusy
+				return nil, nil, ErrBusy
 			}
 			continue
 		}
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		_, werr := f.WriteString(pid)
 		if err := errors.Join(werr, f.Close()); err != nil {
 			os.Remove(p)
-			return nil, err
+			return nil, nil, err
 		}
-		return func() {
-			if data, err := os.ReadFile(p); err == nil && string(data) == pid {
+		mine := func() bool {
+			data, err := os.ReadFile(p)
+			l, ok := instance.ParseExportLock(string(data))
+			return err == nil && ok && l.PID == os.Getpid()
+		}
+		unlock = func() {
+			if mine() {
 				os.Remove(p)
 			}
-		}, nil
+		}
+		recordWork = func(dir string) error {
+			fi, err := os.Stat(p)
+			if err != nil || !mine() {
+				return fmt.Errorf("the export's lock %s is gone", p)
+			}
+			tmp := p + ".w" + pid
+			text := instance.ExportLock{PID: os.Getpid(), WorkDir: dir}.Format()
+			if err := os.WriteFile(tmp, []byte(text), 0o644); err != nil {
+				return err
+			}
+			// the lock keeps its age: staleLock counts from when the export began
+			if err := errors.Join(os.Chtimes(tmp, fi.ModTime(), fi.ModTime()), os.Rename(tmp, p)); err != nil {
+				os.Remove(tmp)
+				return err
+			}
+			return nil
+		}
+		return unlock, recordWork, nil
 	}
-	return nil, ErrBusy
+	return nil, nil, ErrBusy
 }
 
 // staleLock is the age at which a lock counts as left behind even though a
 // process with its PID runs: that PID has been reused.
-const staleLock = 6 * time.Hour
+const staleLock = instance.ExportLockStale
 
 // takeOver removes the lock at p if it was left behind, and reports whether
 // it did: its PID no longer runs, or it is older than staleLock. A lock
@@ -364,12 +393,12 @@ func takeOver(p string) bool {
 		return errors.Is(err, os.ErrNotExist)
 	}
 	age := time.Since(fi.ModTime())
-	pid, perr := strconv.Atoi(string(data))
+	l, ok := instance.ParseExportLock(string(data))
 	switch {
 	case age > staleLock:
-	case perr != nil && age < 10*time.Second:
+	case !ok && age < 10*time.Second:
 		return false
-	case perr == nil && pid > 0 && instance.PIDRunning(pid):
+	case ok && instance.PIDRunning(l.PID):
 		return false
 	}
 	// Moved aside first: of two exports taking over at once, the one that
