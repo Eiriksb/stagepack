@@ -357,12 +357,17 @@ it is in the file's version info and in the Settings → Apps entry. Builds with
    `build/versions.env` and `runtime/package-lock.json`); `make node runtime OS=linux` (and `OS=win32`) makes
    them again. The tarball is the same bytes for the same `dist/linux` and commit. ffmpeg's archives and
    sources come to about 0.9 GB (GitHub takes files up to 2 GiB; `build/release.sh` checks). Two of ffmpeg's
-   libraries live only in Subversion: lame comes from SourceForge's snapshot zip of its revision (checked
-   against the hash of its files in `build/ffmpeg-sources.tsv`; when SourceForge has dropped the snapshot, svn
-   is used, or **Download Snapshot** on its revision's page makes it again), and xvid, whose server offers no
-   snapshot, needs `svn`. `make sources` also checks that the licence texts in those sources are the ones in
-   `build/ffmpeg-licenses.txt`, which ship with ffmpeg; when they differ it writes the new ones to
-   `.cache/dl/ffmpeg-licenses.txt` to check and commit. `PRERELEASE=1` adds a
+   libraries live only in Subversion. Each is checked against the hash of its files pinned in
+   `build/ffmpeg-sources.tsv` (`tree=`), whichever way it comes: lame from SourceForge's snapshot zip of its
+   revision (from svn only when SourceForge has dropped the snapshot, which **Download Snapshot** on that
+   revision's page makes again; a snapshot that doesn't match stops the run), xvid from `svn`, as its server
+   offers no snapshot. **xvid's hash is not pinned yet**: until it is, `make sources` (and so `make release`)
+   stops at xvid. Run `make sources` once on a machine with svn, which prints the hash, and pin xvid's tree hash
+   in `build/ffmpeg-sources.tsv`. `make sources` also checks that the licence texts in those sources are the
+   ones in `build/ffmpeg-licenses.txt`, which ship with ffmpeg; when they differ it writes the new ones to
+   `.cache/dl/ffmpeg-licenses.txt` to check and commit. A row of the table that changed is fetched again, and
+   the archive is made again when the table or the licence texts changed (`build/release.sh` refuses one made
+   from an older table). `PRERELEASE=1` adds a
    pre-release note to `RELEASE_NOTES.md`, but not GitHub's pre-release flag: `releases/latest`, which the
    install script and the download link use, skips pre-releases.
 2. Push the commit, then `make gh-release VERSION=0.1.0`. It checks

@@ -8,11 +8,14 @@
 # them again from its scripts.d/.
 #
 # path: the folder (or file) in the archive, named after the stage
-# kind: git (ref is the commit; the commit id checks the content), svn (ref is the revision), file (ref is
-#       the sha256), crates (every registry crate in the Cargo.lock at ref, checked against its checksum there)
-# options: submodules (all, recursive), submodules=<path>, drop=<path> (a folder BtbN's download step deletes
-#          before the build), snapshot=<url>#<sha256> (svn: a zip of that revision to use instead of svn, whose
-#          files, hashed as `find . -type f | sort | xargs sha256sum | sha256sum`, give that sha256); - for none
+# kind: git (ref is the commit; the commit id checks the content), svn (ref is the revision; its tree= option
+#       checks the content), file (ref is the sha256), crates (every registry crate in the Cargo.lock at ref,
+#       checked against its checksum there)
+# options: git: submodules (all, recursive), submodules=<path>, or drop=<path> (a folder BtbN's download step
+#          deletes before the build); - for none. svn: tree=<sha256>, the hash of the files at that revision
+#          (`find . -type f | sort | xargs sha256sum | sha256sum`, keywords not expanded, LF line ends), or
+#          tree=unset until it is pinned (make sources then stops and prints it); then, after a comma, maybe
+#          snapshot=<url>, a zip of that revision to use instead of svn while the host still has it
 # builds: the BtbN builds that link it
 # licences: the files with its licence texts and notices, relative to path, separated by commas; file@A-B is
 #           lines A to B of a file that has the notice in it; * for crates: each crate's own licence files (or
@@ -96,7 +99,7 @@
 50-libjxl/45-brotli	git	https://github.com/google/brotli.git	27cc9fe9a4aa8901be3b3ba29f2f09eaddb08f97	-	linux64,win64	LICENSE
 50-libjxl/45-lcms2	git	https://github.com/mm2/Little-CMS.git	5cc0eec7ae8350dd0f6c4c07b077f78f18dfe970	-	linux64,win64	LICENSE
 50-libjxl/50-libjxl	git	https://github.com/libjxl/libjxl.git	f0a1c5ff9dbba51ffa932433ffb80e5e6b6e22a7	submodules=third_party/highway	linux64,win64	LICENSE,PATENTS,third_party/highway/LICENSE,third_party/highway/LICENSE-BSD3
-50-libmp3lame	svn	https://svn.code.sf.net/p/lame/svn/trunk/lame	6531	snapshot=https://sourceforge.net/code-snapshots/svn/l/la/lame/svn/lame-svn-r6531-trunk-lame.zip#d63092883b0ecd8d556efa645a636774763cc1477d5bc6ddf4db66d4d3d91dba	linux64,win64	COPYING,LICENSE
+50-libmp3lame	svn	https://svn.code.sf.net/p/lame/svn/trunk/lame	6531	tree=d63092883b0ecd8d556efa645a636774763cc1477d5bc6ddf4db66d4d3d91dba,snapshot=https://sourceforge.net/code-snapshots/svn/l/la/lame/svn/lame-svn-r6531-trunk-lame.zip	linux64,win64	COPYING,LICENSE
 50-libopus	git	https://github.com/xiph/opus.git	3da9f7a6db1c05c3996cb363a9d1931a978bf1be	-	linux64,win64	COPYING,LICENSE_PLEASE_READ.txt
 50-libopus/opus_data-a5177ec6fb7d15058e99e57029746100121f68e4890b1467d4094aa336b6013e.tar.gz	file	https://media.xiph.org/opus/models/opus_data-a5177ec6fb7d15058e99e57029746100121f68e4890b1467d4094aa336b6013e.tar.gz	a5177ec6fb7d15058e99e57029746100121f68e4890b1467d4094aa336b6013e	-	linux64,win64	-
 50-libplacebo	git	https://code.videolan.org/videolan/libplacebo.git	05ac2cca6571c04d06369a26825d207781b73f32	submodules	linux64,win64	LICENSE,3rdparty/glad/LICENSE,3rdparty/fast_float/LICENSE-APACHE,3rdparty/fast_float/LICENSE-BOOST,3rdparty/fast_float/LICENSE-MIT,3rdparty/Vulkan-Headers/LICENSE.md
@@ -137,6 +140,6 @@
 50-x264	git	https://code.videolan.org/videolan/x264.git	0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee	-	linux64,win64	COPYING
 50-x265	git	https://bitbucket.org/multicoreware/x265_git.git	b81f650e21e8aacbe6a9ad04ce14aefc05b932c0	-	linux64,win64	COPYING
 50-xavs2	git	https://github.com/pkuvcl/xavs2.git	eae1e8b9d12468059bdd7dee893508e470fa83d8	-	linux64,win64	COPYING
-50-xvid	svn	https://svn.xvid.org/trunk/xvidcore	2204	-	linux64,win64	LICENSE
+50-xvid	svn	https://svn.xvid.org/trunk/xvidcore	2204	tree=unset	linux64,win64	LICENSE
 50-zimg	git	https://github.com/sekrit-twc/zimg.git	b3647572a01927e2aa8d0b7aaa917207c9c1ae5d	submodules	linux64,win64	COPYING,graphengine/COPYING
 50-zvbi	git	https://github.com/zapping-vbi/zvbi	41477c97c8edf7a01f1594b2a95b94f0117eed21	-	linux64,win64	COPYING.md

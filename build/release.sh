@@ -86,6 +86,11 @@ pack() {
 		# GitHub takes release assets up to 2 GiB
 		[ "$(stat -c %s "$root/.cache/dl/$f")" -lt 2147483648 ] || die ".cache/dl/$f is 2 GiB or more: too large for a release asset"
 	done
+	# the libraries archive is made from build/ffmpeg-sources.tsv and build/ffmpeg-licenses.txt as they are now
+	# (build/fetch.sh writes their sha256 beside it)
+	local libs="ffmpeg-${FFMPEG_VERSION}-libraries-source.tar.xz"
+	[ "$(cat "$root/.cache/dl/$libs.sources" 2>/dev/null)" = "$(cat "$here/ffmpeg-sources.tsv" "$here/ffmpeg-licenses.txt" | sha256sum | cut -d' ' -f1)" ] ||
+		die ".cache/dl/$libs is not made from the current build/ffmpeg-sources.tsv: run 'make sources'"
 	[ "$("$lin/stagepack" version)" = "$ver" ] || die "$lin/stagepack is not built as $ver: run 'make release VERSION=$ver'"
 	winstamped "$win/Stagepack-Setup.exe" || die "$win/Stagepack-Setup.exe is not built as $ver: run 'make release VERSION=$ver'"
 

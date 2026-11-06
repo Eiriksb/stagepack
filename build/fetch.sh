@@ -8,7 +8,7 @@
 #                             archive, .cache/dl/ffmpeg-<version>-libraries-source.tar.xz, after checking that
 #                             their licence texts are the ones in build/ffmpeg-licenses.txt. Needs git, and svn
 #                             for xvid (and for lame when SourceForge's snapshot is gone). A run that stops
-#                             part-way goes on where it stopped.
+#                             part-way goes on where it stopped; a row or table that changed is fetched again.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -49,39 +49,43 @@ fetch_ffmpeg() {
   rmdir "$cache/$d.part"
 }
 
-# treehash dir: one sha256 of the names and contents of the files below dir
+# treehash dir: one sha256 of the names and contents of the files below dir (the tree= of an svn row)
 treehash() {
   (cd "$1" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) | sha256sum | cut -d' ' -f1
 }
 
-# snapshot url#sha256 dir: a zip of one folder (SourceForge's snapshot of an svn revision), whose files must
-# hash to sha256 (treehash), unpacked as dir. Fails when it is not there (SourceForge drops old snapshots).
+# stamp: what the libraries archive is made from (the table and the licence texts it is checked against); the
+# archive is made again when it changes
+stamp() {
+  cat "$here/ffmpeg-sources.tsv" "$here/ffmpeg-licenses.txt" | sha256sum | cut -d' ' -f1
+}
+
+# snapshot url dir: SourceForge's snapshot zip of an svn revision (one folder), unpacked as dir. Returns 1 when
+# it cannot be downloaded (SourceForge drops old snapshots); one that is there but not one folder stops the run.
 snapshot() {
-  local url="${1%#*}" want="${1##*#}" tmp top
+  local tmp top
   tmp="$(mktemp -d "$cache/snapshot.XXXXXX")"
-  if ! curl -fsSL --retry 3 -o "$tmp/s.zip" "$url"; then
-    echo "no snapshot at $url" >&2
+  if ! curl -fsSL --retry 3 -o "$tmp/s.zip" "$1"; then
+    echo "no snapshot at $1: using svn" >&2
     rm -rf "$tmp"
     return 1
   fi
-  unzip -q "$tmp/s.zip" -d "$tmp/x"
+  unzip -q "$tmp/s.zip" -d "$tmp/x" || { echo "the snapshot at $1 is not a zip" >&2; rm -rf "$tmp"; exit 1; }
   top="$(find "$tmp/x" -mindepth 1 -maxdepth 1)"
-  if [ ! -d "$top" ] || [ "$(treehash "$top")" != "$want" ]; then
-    echo "the snapshot at $url is not the pinned one" >&2
-    rm -rf "$tmp"
-    return 1
-  fi
+  [ -d "$top" ] || { echo "the snapshot at $1 is not one folder" >&2; rm -rf "$tmp"; exit 1; }
   mkdir -p "$(dirname "$2")"
   mv "$top" "$2"
   rm -rf "$tmp"
 }
 
-# svn_export url revision dir
+# svn_export url revision dir: the files as the repository holds them (keywords not expanded, LF line ends), as
+# SourceForge's snapshots have them, so that both give the same tree hash
 svn_export() {
   command -v svn >/dev/null || { echo "$3 needs svn (Subversion): install it, then run this again" >&2; exit 1; }
   mkdir -p "$(dirname "$3")"
   # the anonymous read access BtbN's script uses (svn.xvid.org asks for a user name)
-  svn export -q --non-interactive --username anonymous --password '' -r "$2" "$1@$2" "$3"
+  svn export -q --non-interactive --ignore-keywords --native-eol LF --username anonymous --password '' \
+    -r "$2" "$1@$2" "$3"
 }
 
 # entry name text: a licence text, or a pointer to the same text given earlier (seen, in notices)
@@ -137,19 +141,27 @@ notices() {
 }
 
 # fetch_libraries: every row of build/ffmpeg-sources.tsv, fetched below one folder, then packed into one archive.
-# A row that is done is marked in .done/, so a run that failed (a host down) goes on from there.
+# A row that is done is marked in .done/<path>.row with the fields it was fetched with, so a run that failed
+# (a host down) goes on from there, and a row whose fields changed is fetched again, with the rows inside its
+# folder. The archive has its stamp beside it (.sources) and is made again when the stamp changes.
 fetch_libraries() {
   local out="ffmpeg-${FFMPEG_VERSION}-libraries-source"
-  [ -f "$cache/dl/$out.tar.xz" ] && return 0
-  local work="$cache/$out" path kind url ref opt builds lic d mark
-  mkdir -p "$work/$out" "$work/.done"
+  if [ -f "$cache/dl/$out.tar.xz" ] && [ "$(cat "$cache/dl/$out.tar.xz.sources" 2>/dev/null)" = "$(stamp)" ]; then
+    return 0
+  fi
+  rm -f "$cache/dl/$out.tar.xz" "$cache/dl/$out.tar.xz.sources"
+  local work="$cache/$out" path kind url ref opt builds lic d mark fields tree snap got x
+  local -a opts
+  mkdir -p "$work/$out" "$work/.done" "$cache/dl"
   while IFS=$'\t' read -r path kind url ref opt builds lic; do
     case "$path" in '#'* | '') continue ;; esac
     d="$work/$out/$path"
-    mark="$work/.done/${path//\//__}"
-    [ -e "$mark" ] && continue
+    mark="$work/.done/$path.row"
+    fields="$(printf '%s\t' "$path" "$kind" "$url" "$ref" "$opt")"
+    [ "$(cat "$mark" 2>/dev/null)" = "$fields" ] && continue
     echo "$kind $url $ref"
-    rm -rf "$d"
+    # this row, and the rows inside its folder, are fetched again
+    rm -rf "$d" "$mark" "${work:?}/.done/$path"
     case "$kind" in
       git)
         mkdir -p "$d"
@@ -166,10 +178,22 @@ fetch_libraries() {
         esac
         ;;
       svn)
-        case "$opt" in
-          snapshot=*) snapshot "${opt#snapshot=}" "$d" || svn_export "$url" "$ref" "$d" ;;
-          *) svn_export "$url" "$ref" "$d" ;;
-        esac
+        # tree=<sha256> (treehash of the files at that revision), and maybe snapshot=<url>, by a comma
+        tree="" snap=""
+        IFS=, read -ra opts <<<"$opt"
+        for x in "${opts[@]}"; do
+          case "$x" in tree=*) tree="${x#tree=}" ;; snapshot=*) snap="${x#snapshot=}" ;; esac
+        done
+        [ -n "$tree" ] || { echo "build/ffmpeg-sources.tsv: $path has no tree=<sha256> (or tree=unset)" >&2; exit 1; }
+        [ "$tree" != unset ] || echo "$path: its tree hash is not pinned in build/ffmpeg-sources.tsv yet: run make sources once on a machine with svn, which prints it, and pin it there as tree=<sha256>" >&2
+        # only a snapshot that is not there falls back to svn; either way the files must hash to tree
+        if [ -z "$snap" ] || ! snapshot "$snap" "$d"; then svn_export "$url" "$ref" "$d"; fi
+        got="$(treehash "$d")"
+        if [ "$tree" = unset ]; then
+          echo "$path: the files at r$ref hash to $got: check them, then set tree=$got for it in build/ffmpeg-sources.tsv" >&2
+          exit 1
+        fi
+        [ "$got" = "$tree" ] || { echo "$path: the files at r$ref hash to $got, not to the pinned $tree" >&2; exit 1; }
         ;;
       file)
         mkdir -p "$(dirname "$d")"
@@ -188,7 +212,8 @@ fetch_libraries() {
         ;;
       *) echo "build/ffmpeg-sources.tsv: unknown kind $kind for $path" >&2; exit 1 ;;
     esac
-    touch "$mark"
+    mkdir -p "$(dirname "$mark")"
+    printf '%s' "$fields" >"$mark"
   done <"$here/ffmpeg-sources.tsv"
   # the notices shipped with ffmpeg (build/ffmpeg-licenses.txt) must be the ones these sources carry
   LC_ALL=C notices "$work/$out" >"$work/$out/LICENSES.txt"
@@ -203,6 +228,7 @@ fetch_libraries() {
   tar --create --format=gnu --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner --exclude=.git \
     -C "$work" "$out" | xz -T0 -6 >"$cache/dl/$out.tar.xz.part"
   mv "$cache/dl/$out.tar.xz.part" "$cache/dl/$out.tar.xz"
+  stamp >"$cache/dl/$out.tar.xz.sources"
   rm -rf "$work"
   echo "wrote $cache/dl/$out.tar.xz ($(du -h "$cache/dl/$out.tar.xz" | cut -f1))"
 }
