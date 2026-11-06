@@ -15,6 +15,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"os/exec"
@@ -161,6 +162,7 @@ func icoPNGs(ico []byte) (map[int][]byte, error) {
 type xdgFile struct {
 	rel  string // slash-separated, below $XDG_DATA_HOME
 	data []byte
+	mode fs.FileMode // 0 means 0644
 }
 
 func iconRel(n int) string {
@@ -183,26 +185,85 @@ func xdgFiles(exe string) ([]xdgFile, error) {
 	if err != nil {
 		return nil, fmt.Errorf("the program icon: %w", err)
 	}
-	files := []xdgFile{
-		{mimeRel, []byte(mimePackage())},
-		{desktopRel, []byte(entry)},
+	exports, err := exportFiles(exe)
+	if err != nil {
+		return nil, err
 	}
+	files := []xdgFile{
+		{rel: mimeRel, data: []byte(mimePackage())},
+		{rel: desktopRel, data: []byte(entry)},
+	}
+	files = append(files, exports...)
 	for _, n := range iconSizes {
 		p, ok := pngs[n]
 		if !ok {
 			return nil, fmt.Errorf("the program icon has no %d px image", n)
 		}
-		files = append(files, xdgFile{iconRel(n), p})
+		files = append(files, xdgFile{rel: iconRel(n), data: p})
 	}
 	return files, nil
 }
 
 func ownedXDGFiles() []string {
 	rels := []string{mimeRel, desktopRel}
+	// The export entries' names do not depend on the program path.
+	exports, _ := exportFiles("/")
+	for _, f := range exports {
+		rels = append(rels, f.rel)
+	}
 	for _, n := range iconSizes {
 		rels = append(rels, iconRel(n))
 	}
 	return rels
+}
+
+// The two ways to export a talk to PowerPoint, as they are worded in menus.
+const (
+	exportEditableName   = "Export to PowerPoint (editable)"
+	exportAnimationsName = "Export to PowerPoint (with animations)"
+)
+
+// shQuote quotes s as one word for sh: in single quotes, a quote in s as '\”.
+func shQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// exportFiles are the right-click entries that run `export-pptx` on a talk: a
+// KDE service menu (which KDE only trusts when executable), two Nautilus
+// scripts, and two desktop entries for Open With (hidden from the menu).
+func exportFiles(exe string) ([]xdgFile, error) {
+	arg, err := desktopExecArg(exe)
+	if err != nil {
+		return nil, err
+	}
+	if strings.ContainsRune(exe, 0) {
+		return nil, fmt.Errorf("the install folder holds a NUL: %q", exe)
+	}
+	variants := []struct {
+		name, flag, id, script string
+	}{
+		{exportEditableName, "", "", "editable"},
+		{exportAnimationsName, " --animations", "-animations", "animations"},
+	}
+	menu := "[Desktop Entry]\nType=Service\nMimeType=" + brand.MIMEType + ";\n" +
+		"X-KDE-ServiceTypes=KonqPopupMenu/Plugin\nActions=editable;animations;\n"
+	var files []xdgFile
+	for _, v := range variants {
+		menu += "\n[Desktop Action " + v.script + "]\nName=" + v.name + "\nExec=" + arg + " export-pptx" + v.flag + " %f\n"
+		files = append(files,
+			xdgFile{
+				rel:  "nautilus/scripts/" + v.name,
+				data: []byte("#!/bin/sh\nfor f in \"$@\"; do " + shQuote(exe) + " export-pptx" + v.flag + " \"$f\"; done\n"),
+				mode: 0o755,
+			},
+			xdgFile{
+				rel: "applications/" + brand.AppID + "-export" + v.id + ".desktop",
+				data: []byte("[Desktop Entry]\nType=Application\nName=" + v.name + "\n" +
+					"Exec=" + arg + " export-pptx" + v.flag + " %f\n" +
+					"Icon=" + brand.AppID + "\nMimeType=" + brand.MIMEType + ";\nTerminal=false\nNoDisplay=true\nStartupNotify=false\n"),
+			})
+	}
+	return append([]xdgFile{{rel: "kio/servicemenus/" + brand.AppID + "-export.desktop", data: []byte(menu), mode: 0o755}}, files...), nil
 }
 
 // dropDefault takes desktop file id out of the mime= lines of a mimeapps.list,
@@ -299,7 +360,7 @@ func (x *xdgDesktop) register(exe string) error {
 		return err
 	}
 	for _, f := range files {
-		if err := writeAtomic(filepath.Join(data, filepath.FromSlash(f.rel)), f.data); err != nil {
+		if err := writeAtomicMode(filepath.Join(data, filepath.FromSlash(f.rel)), f.data, f.mode); err != nil {
 			return err
 		}
 	}
@@ -358,11 +419,16 @@ func (x *xdgDesktop) remove() error {
 			}
 		}
 	}
+	// Folders of the export entries that are now empty were made by Install
+	// (nautilus/scripts may hold the user's own scripts, and stays then).
+	for _, d := range []string{"kio/servicemenus", "kio", "nautilus/scripts", "nautilus"} {
+		os.Remove(filepath.Join(data, filepath.FromSlash(d)))
+	}
 	// The cache update-desktop-database made, when no desktop entry is left for it.
 	if apps := filepath.Join(data, "applications"); onlyCache(apps, "mimeinfo.cache") {
 		errs = append(errs, os.Remove(filepath.Join(apps, "mimeinfo.cache")))
-		os.Remove(apps)
 	}
+	os.Remove(filepath.Join(data, "applications")) // when nothing else is in it
 	// The MIME folder is made from packages/ alone: with no package left, all of it goes.
 	if mime := filepath.Join(data, "mime"); emptyDir(filepath.Join(mime, "packages")) {
 		errs = append(errs, os.RemoveAll(mime))
@@ -409,12 +475,21 @@ func (x *xdgDesktop) mimeappsLists(data string) []string {
 func (x *xdgDesktop) notify() {}
 
 // writeAtomic writes p by way of a file beside it, making its folder.
-func writeAtomic(p string, data []byte) error {
+func writeAtomic(p string, data []byte) error { return writeAtomicMode(p, data, 0) }
+
+// writeAtomicMode is writeAtomic with a file mode (0 means 0644).
+func writeAtomicMode(p string, data []byte, mode fs.FileMode) error {
+	if mode == 0 {
+		mode = 0o644
+	}
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return err
 	}
 	tmp := p + ".new"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+	if err := os.WriteFile(tmp, data, mode); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp, mode); err != nil { // not narrowed by the umask
 		return err
 	}
 	if err := os.Rename(tmp, p); err != nil {

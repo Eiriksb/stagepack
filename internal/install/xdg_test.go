@@ -5,8 +5,10 @@ import (
 	"encoding/xml"
 	"image/png"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -358,5 +360,156 @@ func TestLinuxInstallAndUninstall(t *testing.T) {
 	}
 	if !exists(home, "journal/x.json") {
 		t.Error("the journal was removed")
+	}
+}
+
+func TestXDGFilesIncludeTheExportEntries(t *testing.T) {
+	exe := `/home/u/my "dir"/stagepack`
+	files, err := xdgFiles(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	by := map[string]xdgFile{}
+	for _, f := range files {
+		by[f.rel] = f
+	}
+	arg, _ := desktopExecArg(exe)
+	const ed, an = "Export to PowerPoint (editable)", "Export to PowerPoint (with animations)"
+
+	kde, ok := by["kio/servicemenus/"+brand.AppID+"-export.desktop"]
+	if !ok || kde.mode != 0o755 {
+		t.Fatalf("KDE service menu: %v, mode %v", ok, kde.mode)
+	}
+	for _, want := range []string{
+		"Type=Service\n", "MimeType=" + brand.MIMEType + ";\n", "X-KDE-ServiceTypes=KonqPopupMenu/Plugin\n",
+		"Actions=editable;animations;\n",
+		"[Desktop Action editable]\nName=" + ed + "\n", "Exec=" + arg + " export-pptx %f\n",
+		"[Desktop Action animations]\nName=" + an + "\n", "Exec=" + arg + " export-pptx --animations %f\n",
+	} {
+		if !strings.Contains(string(kde.data), want) {
+			t.Errorf("service menu lacks %q:\n%s", want, kde.data)
+		}
+	}
+	for _, name := range []string{ed, an} {
+		s, ok := by["nautilus/scripts/"+name]
+		if !ok || s.mode != 0o755 || !strings.HasPrefix(string(s.data), "#!/bin/sh\n") {
+			t.Errorf("Nautilus script %q: %v, mode %v", name, ok, s.mode)
+		}
+	}
+	for rel, c := range map[string]struct{ name, args string }{
+		"applications/" + brand.AppID + "-export.desktop":            {ed, " export-pptx %f"},
+		"applications/" + brand.AppID + "-export-animations.desktop": {an, " export-pptx --animations %f"},
+	} {
+		f, ok := by[rel]
+		if !ok || f.mode != 0 {
+			t.Errorf("%s: %v, mode %v", rel, ok, f.mode)
+			continue
+		}
+		k := desktopKeys(t, string(f.data))
+		if k["Name"] != c.name || k["Exec"] != arg+c.args || k["NoDisplay"] != "true" || k["MimeType"] != brand.MIMEType+";" {
+			t.Errorf("%s = %v", rel, k)
+		}
+	}
+	// What is written is what Uninstall removes.
+	owned := ownedXDGFiles()
+	for _, f := range files {
+		if !slices.Contains(owned, f.rel) {
+			t.Errorf("%s is written but not removed", f.rel)
+		}
+	}
+	if len(owned) != len(files) {
+		t.Errorf("%d owned, %d written", len(owned), len(files))
+	}
+}
+
+func TestNautilusScriptPassesPathsIntact(t *testing.T) {
+	dir := t.TempDir()
+	log := filepath.Join(dir, "args")
+	exe := filepath.Join(dir, "it's a dir", "fake")
+	write(t, dir, "it's a dir/fake", "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\0' \"$a\" >> "+shQuote(log)+"; done\nprintf '|\\0' >> "+shQuote(log)+"\n")
+	if err := os.Chmod(exe, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	files, err := xdgFiles(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		name string
+		args []string
+		pre  []string
+	}{
+		{"Export to PowerPoint (editable)", nil, []string{"export-pptx"}},
+		{"Export to PowerPoint (with animations)", nil, []string{"export-pptx", "--animations"}},
+	}
+	one := `a "b" $c ø.sptx`
+	for _, c := range cases {
+		var script []byte
+		for _, f := range files {
+			if f.rel == "nautilus/scripts/"+c.name {
+				script = f.data
+			}
+		}
+		if script == nil {
+			t.Fatalf("no script %q", c.name)
+		}
+		sp := filepath.Join(dir, "script.sh")
+		if err := os.WriteFile(sp, script, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		for _, sel := range [][]string{{one}, {one, "second `x`.sptx"}} {
+			os.Remove(log)
+			if out, err := exec.Command("sh", append([]string{sp}, sel...)...).CombinedOutput(); err != nil {
+				t.Fatalf("%v: %s", err, out)
+			}
+			b, _ := os.ReadFile(log)
+			var want strings.Builder
+			for _, f := range sel {
+				for _, a := range append(append([]string{}, c.pre...), f) {
+					want.WriteString(a + "\x00")
+				}
+				want.WriteString("|\x00")
+			}
+			// One call per file, each ending in "|".
+			if string(b) != want.String() {
+				t.Errorf("%s with %q: got %q, want %q", c.name, sel, b, want.String())
+			}
+		}
+	}
+}
+
+func TestUninstallRemovesTheExportEntries(t *testing.T) {
+	f := newFakeDesktop(t)
+	write(t, f.data, "nautilus/scripts/mine", "#!/bin/sh\n")
+	if err := f.x.register("/x/stagepack"); err != nil {
+		t.Fatal(err)
+	}
+	for _, rel := range []string{
+		"kio/servicemenus/" + brand.AppID + "-export.desktop",
+		"nautilus/scripts/Export to PowerPoint (editable)",
+		"nautilus/scripts/Export to PowerPoint (with animations)",
+		"applications/" + brand.AppID + "-export.desktop",
+		"applications/" + brand.AppID + "-export-animations.desktop",
+	} {
+		if !exists(f.data, rel) {
+			t.Errorf("%s not written", rel)
+		}
+	}
+	if fi, _ := os.Stat(filepath.Join(f.data, "kio/servicemenus/"+brand.AppID+"-export.desktop")); fi == nil || fi.Mode().Perm() != 0o755 {
+		t.Errorf("service menu mode %v", fi)
+	}
+	if err := f.x.remove(); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range []string{"kio", "applications", "mime", "icons"} {
+		if exists(f.data, d) {
+			t.Errorf("%s left behind", d)
+		}
+	}
+	if !exists(f.data, "nautilus/scripts/mine") {
+		t.Error("someone else's script was removed")
+	}
+	if exists(f.data, "nautilus/scripts/Export to PowerPoint (editable)") {
+		t.Error("our script left behind")
 	}
 }

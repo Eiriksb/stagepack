@@ -40,6 +40,11 @@ func TestRegistryPlan(t *testing.T) {
 		{classes + brand.ProgID, "", brand.Name + " talk"},
 		{classes + brand.ProgID + `\DefaultIcon`, "", `"` + testIcon + `"`},
 		{classes + brand.ProgID + `\shell\open\command`, "", `"` + testExe + `" open "%1"`},
+		{classes + brand.ProgID + `\shell`, "", "open"},
+		{classes + brand.ProgID + `\shell\exportpptx`, "MUIVerb", "Export to PowerPoint (editable)"},
+		{classes + brand.ProgID + `\shell\exportpptx\command`, "", `"` + testExe + `" export-pptx "%1"`},
+		{classes + brand.ProgID + `\shell\exportpptxanim`, "MUIVerb", "Export to PowerPoint (with animations)"},
+		{classes + brand.ProgID + `\shell\exportpptxanim\command`, "", `"` + testExe + `" export-pptx --animations "%1"`},
 		{uninst, "DisplayName", brand.Name},
 		{uninst, "DisplayVersion", version.Version},
 		{uninst, "UninstallString", `"` + testExe + `" uninstall`},
@@ -72,6 +77,19 @@ func TestRegistryCommandQuotesPath(t *testing.T) {
 	want := `"C:\Users\Åse\AppData\Local\` + brand.Name + `\stagepack.exe" open "%1"`
 	if got != want {
 		t.Errorf("command = %s, want %s", got, want)
+	}
+}
+
+func TestRegistryExportCommandsQuotePath(t *testing.T) {
+	plan := RegistryPlan(testExe, testExe)
+	q := `"C:\Users\Åse\AppData\Local\` + brand.Name + `\stagepack.exe"`
+	for verb, want := range map[string]string{
+		"exportpptx":     q + ` export-pptx "%1"`,
+		"exportpptxanim": q + ` export-pptx --animations "%1"`,
+	} {
+		if got := mustFind(t, plan, `HKCU\Software\Classes\`+brand.ProgID+`\shell\`+verb+`\command`, ""); got != want {
+			t.Errorf("%s = %s, want %s", verb, got, want)
+		}
 	}
 }
 
