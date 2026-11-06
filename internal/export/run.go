@@ -113,10 +113,12 @@ func (q quiet) Write(p []byte) (int, error) {
 
 // Run starts cmd in its own process group (job object on Windows) and calls
 // onEvent for each JSON line on its stdout. If ctx ends first, the group is
-// stopped and context.Canceled (or ctx's error) is returned. A failing exit
-// returns an error carrying the exporter's error message, or else the end of
-// its stderr, which still reaches cmd.Stderr if that is set. out+".partial"
-// is removed unless the exporter exited cleanly.
+// stopped and context.Canceled (or ctx's error) is returned, and a done that
+// comes after that is not passed on: SIGTERM has Playwright close the browser,
+// and the exporter may still finish the file, without what was left to record.
+// A failing exit returns an error carrying the exporter's error message, or
+// else the end of its stderr, which still reaches cmd.Stderr if that is set.
+// out+".partial" is removed unless the exporter exited cleanly.
 func Run(ctx context.Context, cmd *exec.Cmd, out string, onEvent func(Event)) (err error) {
 	clean := false
 	defer func() {
@@ -165,6 +167,9 @@ func Run(ctx context.Context, cmd *exec.Cmd, out string, onEvent func(Event)) (e
 			continue
 		}
 		if ev.Event == "done" {
+			if ctx.Err() != nil {
+				continue // finished while being stopped: not the file that was asked for
+			}
 			sawDone = true
 		}
 		if ev.Event == "error" {

@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -60,6 +61,15 @@ func fake(mode string) {
 		_ = os.WriteFile(out+".partial", []byte("x"), 0o644)
 		println3(`{"event":"start","slides":2}`)
 		<-ch
+		os.Exit(0)
+	case "finish-on-term": // as the real exporter: SIGTERM closes its browser, and it finishes the file anyway
+		ch := make(chan os.Signal, 1)
+		signal.Notify(ch, syscall.SIGTERM)
+		_ = os.WriteFile(out+".partial", []byte("x"), 0o644)
+		println3(`{"event":"start","slides":2}`)
+		<-ch
+		_ = os.Rename(out+".partial", out)
+		println3(`{"event":"done","path":"x.pptx","slides":2,"clips":0,"bytes":1}`)
 		os.Exit(0)
 	case "longline":
 		w := bufio.NewWriter(os.Stdout)
@@ -274,6 +284,41 @@ func TestRunCancelIsNotSuccessEvenIfTheExporterExitsCleanly(t *testing.T) {
 	}
 	if _, serr := os.Stat(out + ".partial"); serr == nil {
 		t.Error(".partial left behind")
+	}
+}
+
+// The exporter does not stop at SIGTERM: Playwright closes its browser, and the exporter may then
+// finish the file without what it had left to record. A done that comes after the cancel is not one.
+func TestRunDoneAfterTheCancelIsACancel(t *testing.T) {
+	cmd, out := fakeCmd(t, "finish-on-term")
+	ctx, cancel := context.WithCancel(context.Background())
+	started := make(chan struct{}, 1)
+	var events []string
+	errc := make(chan error, 1)
+	go func() {
+		errc <- Run(ctx, cmd, out, func(e Event) {
+			events = append(events, e.Event)
+			if e.Event == "start" {
+				started <- struct{}{}
+			}
+		})
+	}()
+	select {
+	case <-started:
+	case <-time.After(10 * time.Second):
+		t.Fatal("no start event")
+	}
+	cancel()
+	select {
+	case err := <-errc:
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("err = %v, want context.Canceled", err)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("Run did not return after cancel")
+	}
+	if slices.Contains(events, "done") {
+		t.Errorf("events %q: the done after the cancel was passed on", events)
 	}
 }
 
