@@ -33,6 +33,10 @@ After that, double-click a `.sptx` file to present it. The other commands run th
 | `stagepack uninstall` | removes the installed viewer; your `.sptx` files are not touched |
 | `stagepack version` | this launcher's version and the installed viewer's |
 
+`stagepack install` also adds two right-click entries on `.sptx` files that export to PowerPoint, and
+`stagepack export-pptx FILE.sptx` does the same from a terminal: see
+[Export to PowerPoint](https://github.com/Eiriksb/stagepack#export-to-powerpoint).
+
 Uninstalling the npm package does not remove the viewer: run `stagepack uninstall` first.
 
 MIT licensed. The viewer bundles Node and Slidev's npm packages; their licences are listed in the release.

@@ -5,7 +5,8 @@
 Stagepack packs a [Slidev](https://sli.dev) presentation into one file, `presentation.sptx`, that opens with a double-click.
 The viewer brings its own Node and a pinned Slidev, so the presenter needs nothing installed: no Node, no npm.
 It works offline when the presentation bundles its fonts (see "Fonts" below). The presentation opens in Slidev's presenter
-view, and edits to the speaker notes are saved back into the `.sptx` file.
+view, and edits to the speaker notes are saved back into the `.sptx` file. Right-click a `.sptx` file to export it to
+PowerPoint (see "Export to PowerPoint" below).
 
 A presentation can carry its own code (a Vite config, `setup/` files, Vue components, bundled packages), and Slidev
 runs that code as you, like opening any Slidev project. So before it shows such a presentation, the viewer asks, once
@@ -21,7 +22,9 @@ tests go, but see "Open items" below.
 ## Install
 
 Every channel installs the same build for the current user only, with no administrator rights or sudo,
-and registers `.sptx` files so they open with a double-click. Releases are at
+and registers `.sptx` files so they open with a double-click and offer the two PowerPoint exports (see "Export to
+PowerPoint" below). The exporter, a headless browser and ffmpeg come with the build, so the export needs nothing else
+installed. Releases are at
 [github.com/Eiriksb/stagepack/releases](https://github.com/Eiriksb/stagepack/releases).
 
 **Windows:** download `Stagepack-Setup.exe` from the latest release and run it (see "For presenters" below,
@@ -118,6 +121,30 @@ later, you are asked again. Presentations without code never ask.
 
 To remove Stagepack: **Settings → Apps → Stagepack → Uninstall**. Your `.sptx` files are not touched.
 
+### Export to PowerPoint
+
+Right-click a `.sptx` file and choose one of two entries:
+
+- **Export to PowerPoint (editable)** writes `NAME.pptx` next to the `.sptx` file. Text, shapes and pictures stay
+  editable in PowerPoint.
+- **Export to PowerPoint (with animations)** writes `NAME-animations.pptx`. Clicks that move something become short
+  videos, so the slide plays as in Slidev. This copy is made for presenting from PowerPoint for the web and from
+  desktop PowerPoint; desktop PowerPoint and Windows haven't been checked yet (see "Open items").
+
+Where the entries are:
+
+- **Windows:** in the right-click menu. Windows 11 shows them under **Show more options**.
+- **GNOME Files (Nautilus):** right-click, then **Scripts**. They are also under **Open With**.
+- **KDE (Dolphin):** in the right-click menu, as plain entries.
+
+A box shows the step ("Slide 4 of 11") and the time left, and has **Cancel**, which stops the export and leaves no
+half-written file. If `NAME.pptx` already exists, you are asked before it is replaced. If the folder can't be
+written, you are asked where to save. A presentation that contains code gets the same "contains code" question as
+when it is opened (see above); No ends the export with nothing written. Only one export of a file runs at a time.
+
+When it is done, the box lists notes worth reading, and has **Open**, **Show in folder** and **Close**. If it fails, the
+box says in one sentence what went wrong and names the log folder (`logs/` in the viewer's folder, see "Layout").
+
 ### On Linux
 
 There is no setup program: the Linux build (the release tarball, or `make build-linux`: a folder with
@@ -138,7 +165,8 @@ script and the npm package (see "Install" above) do step 1 for you.
    `kdialog` on KDE. Without either, messages go to the log and to a desktop notification, and the code
    question is answered No: such a presentation does not open until zenity is installed.
 5. **To remove it:** `~/.local/share/stagepack/stagepack uninstall`. It removes exactly what the install
-   added (the folder, the MIME type, the desktop entry, the icons and the default-application entry) and, as on
+   added (the folder, the MIME type, the desktop entry, the icons, the default-application entry and the export
+   entries) and, as on
    Windows, keeps notes that are not yet in any presentation. Your `.sptx` files are not touched.
 
 ## For authors
@@ -193,6 +221,22 @@ Then name it in the headmatter of `slides.md`, as `addons: [stagepack]` on one l
 presentation that names it opens there without the "contains code" question. That holds for exactly this addon
 (`stagepack` or `slidev-addon-stagepack`); any other addon still counts. `stagepack pack` never bundles your copy
 of it. Details are in [addon/README.md](addon/README.md).
+
+### Export to PowerPoint from a terminal
+
+`stagepack export-pptx [--animations] FILE.sptx` does what the right-click entries do.
+
+| flag | meaning |
+|---|---|
+| `--animations` | the animated copy, `NAME-animations.pptx` |
+| `--home DIR` | the viewer's folder (default: the folder of the program) |
+| `--headless` | no dialogs: questions and results are JSON lines on stdout |
+| `--trust-code` | run the presentation's own code without asking; only for presentations you trust |
+| `--yes` | replace an existing `.pptx` without asking |
+
+Exit codes: 0 done, 1 failed, 2 usage, 3 cancelled or code not trusted, 4 another export of that file is running.
+The exporter is [slidev-pptx-export](https://github.com/Eiriksb/slidev-pptx-export); its config file, if the
+presentation carries one, applies as it does there.
 
 ### Code in a presentation
 
@@ -332,13 +376,18 @@ runtimes/53/package.json, package-lock.json       the pinned runtime (runtime/)
 runtimes/53/pnpm-workspace.yaml                   marks runtimes/53/ as Vite's workspace root
 runtimes/53/node_modules/@slidev/cli/bin/slidev.mjs
 runtimes/53/node_modules/slidev-addon-stagepack/  the export addon (addon/, copied in by build/addon.sh), inert here
+runtimes/53/node_modules/slidev-pptx-export/      the PowerPoint exporter (runtime/)
+browser-shell/chrome-headless-shell[.exe]         the headless browser the exporter draws with
+ffmpeg/ffmpeg[.exe]                               ffmpeg, for the clips of the animated copy
 runtimes/53/work/<id>/                            one opened presentation, unpacked
 journal/<key>.json                                note edits not yet in the .sptx file (kept by uninstall)
 trusted.json                                      presentations allowed to run their code: id and hash of that version
 logs/viewer.log                                   the viewer's log (viewer.log.1: the previous one)
 logs/<key>.log                                    Slidev's output for one presentation
+logs/export-<key>.log                             the log of one PowerPoint export
 browser/<hash>/                                   the browser profile of an open presentation's windows (removed when they close)
 instances/<hash>.json, .lock                      one running presentation: process, port, URL
+instances/<hash>.export                           lock of a running PowerPoint export of one file
 ```
 
 On Linux the install also writes, below `~/.local/share` (`$XDG_DATA_HOME`), and nothing else:
@@ -347,6 +396,11 @@ On Linux the install also writes, below `~/.local/share` (`$XDG_DATA_HOME`), and
 mime/packages/stagepack.xml                       application/x-stagepack: *.sptx, a subclass of application/zip
 applications/stagepack.desktop                    Exec=<home>/stagepack open %f, hidden from the app menu
 icons/hicolor/{256x256,48x48,32x32,16x16}/apps/stagepack.png   the icon (from assets/stagepack.ico)
+kio/servicemenus/stagepack-export.desktop         the two export entries in KDE's right-click menu
+nautilus/scripts/Export to PowerPoint (editable)  the two export entries under GNOME Files' Scripts
+nautilus/scripts/Export to PowerPoint (with animations)
+applications/stagepack-export.desktop             the same two, hidden entries that show under Open With
+applications/stagepack-export-animations.desktop
 ```
 
 and runs `update-mime-database`, `update-desktop-database` and `xdg-mime default stagepack.desktop
@@ -367,7 +421,8 @@ Slidev writes its generated files to `work/<id>/node_modules/.slidev/`, so the w
 and gets a `node_modules/` even when the presentation vendors nothing.
 
 The Go code is in `cmd/stagepack` (command line) and `internal/` (`brand` holds the product's names; `pack`,
-`deck`, `workspace`, `trust`, `save`, `slidev`, `instance`, `ui`, `browser`, `app`).
+`deck`, `workspace`, `trust`, `save`, `slidev`, `instance`, `ui`, `browser`, `app`, `export`). On Windows the install also
+adds two verbs, `exportpptx` and `exportpptxanim`, under Stagepack's file type in the current user's registry.
 
 ## Measured
 
@@ -424,3 +479,6 @@ The npm side is checked by `build/licenses.mjs`, above.
   `Stagepack-Setup.exe` on one and open a `.sptx` file: install, double-click, presenter view, audience view,
   a notes edit saved into the file ("Notes saved"), Stop, uninstall. Until then Windows behaviour is tested
   only by cross-compiling and by the tests that don't need Windows.
+- The animated PowerPoint export (`-animations.pptx`) has not been checked in desktop PowerPoint, nor the export
+  entries on Windows. Before the first handover, export a presentation on a Windows machine, open both copies in
+  desktop PowerPoint, and play the animated one.
