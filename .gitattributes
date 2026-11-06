@@ -1,0 +1,2 @@
+# build/fetch.sh compares this byte for byte with the licence texts in the sources (some have CRLF lines)
+build/ffmpeg-licenses.txt -text

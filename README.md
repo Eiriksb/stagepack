@@ -23,9 +23,9 @@ tests go, but see "Open items" below.
 
 Every channel installs the same build for the current user only, with no administrator rights or sudo,
 and registers `.sptx` files so they open with a double-click and offer the two PowerPoint exports (see "Export to
-PowerPoint" below). The exporter, a headless browser and ffmpeg come with the build, so the export needs nothing else
-installed. They about double the download: the Linux tarball is about 240 MB (118 MB without them) and
-`Stagepack-Setup.exe` about 363 MB (186 MB without them); installed, the viewer takes about 1.2 GB. Releases are at
+PowerPoint" below). The exporter and ffmpeg come with the build; the export draws with the Chrome, Edge or Chromium
+already on the computer. ffmpeg makes the download larger: the Linux tarball is about 158 MB (118 MB without it)
+and `Stagepack-Setup.exe` about 240 MB (186 MB without it); installed, the viewer takes about 0.9 GB. Releases are at
 [github.com/Eiriksb/stagepack/releases](https://github.com/Eiriksb/stagepack/releases).
 
 **Windows:** download `Stagepack-Setup.exe` from the latest release and run it (see "For presenters" below,
@@ -37,7 +37,7 @@ also about the "Windows protected your PC" warning).
 curl -fsSL https://raw.githubusercontent.com/Eiriksb/stagepack/main/install.sh | sh
 ```
 
-[`install.sh`](install.sh) downloads `stagepack-<version>-linux-x64.tar.xz` (about 240 MB) from the latest
+[`install.sh`](install.sh) downloads `stagepack-<version>-linux-x64.tar.xz` (about 158 MB) from the latest
 release and checks it against the release's `SHA256SUMS`. It unpacks it under `~/.cache` and runs
 `stagepack install --yes` from there, which copies it to `~/.local/share/stagepack`. It needs `tar`, `xz`,
 `sha256sum` and `curl` or `wget`. `STAGEPACK_VERSION=0.1.0` picks a given release. Arguments go on to
@@ -51,7 +51,7 @@ tarball below.
 npx stagepack install
 ```
 
-or `npm install -g stagepack`, then `stagepack install`. The npm package is a small launcher, not the 1.2 GB
+or `npm install -g stagepack`, then `stagepack install`. The npm package is a small launcher, not the 0.9 GB
 viewer. `stagepack install` downloads the release of the same version for your platform and checks it against
 the SHA-256 checksums published inside the npm package. Then it runs that build's own installer: the Linux
 tarball's `stagepack install`, or `Stagepack-Setup.exe`. Afterwards `stagepack open|pack|uninstall` run the
@@ -310,9 +310,9 @@ fonts:
 
 ## Building from source
 
-Needs a Linux (amd64) build host with `curl`, `tar`, `unzip` and `npm`. Go, Node, the headless browser and ffmpeg
-are downloaded once into `.cache/`, pinned and checksummed (`build/versions.env`, `build/fetch.sh`). A release
-also needs `git` and `svn` (Subversion), for the sources it carries (`make sources`).
+Needs a Linux (amd64) build host with `curl`, `tar`, `unzip` and `npm`. Go, Node and ffmpeg are downloaded once
+into `.cache/`, pinned and checksummed (`build/versions.env`, `build/fetch.sh`). A release also needs `git` and
+`svn` (Subversion), for ffmpeg's sources (`make sources`, see "Releasing").
 
 | target | what it does |
 |---|---|
@@ -320,13 +320,13 @@ also needs `git` and `svn` (Subversion), for the sources it carries (`make sourc
 | `make e2e` | end-to-end tests against the Linux build in `dist/linux` (skipped when it is missing) |
 | `make node OS=linux` | puts Node in `dist/linux/node/` (`OS=win32` for Windows) |
 | `make runtime OS=linux` | installs the pinned Slidev runtime in `dist/linux/runtimes/53/` and checks its licences (online) |
-| `make programs OS=linux` | puts the headless browser in `dist/linux/browser-shell/` and ffmpeg in `dist/linux/ffmpeg/` (`OS=win32` for Windows) |
+| `make programs OS=linux` | puts ffmpeg, its licence and its libraries' licences in `dist/linux/ffmpeg/` (`OS=win32` for Windows) |
 | `make build OS=linux` | builds `dist/linux/stagepack` (`OS=win32` cross-compiles `stagepack.exe`) |
-| `make build-linux` | `dist/linux/stagepack` with `node/`, `runtimes/`, `browser-shell/` and `ffmpeg/` beside it; fetches Node and installs the runtime only if they are missing, copies the programs each time and checks them (`build/programs.sh`, see "Licences") |
+| `make build-linux` | `dist/linux/stagepack` with `node/`, `runtimes/` and `ffmpeg/` beside it; fetches Node and installs the runtime only if they are missing, copies ffmpeg each time and checks the programs (`build/programs.sh`, see "Licences") |
 | `make build-windows` | `dist/windows/Stagepack-Setup.exe` and `PRESENTER.txt` beside it; the same for Windows (Node, runtime, programs, viewer, payload, installer) |
 | `make licenses-go` | the licences of the Go modules the Linux and Windows programs link (`build/go-licenses.tsv`); fails on a module that isn't permissive or isn't in the table |
-| `make setup` | builds `dist/windows/Stagepack-Setup.exe`: the installer, with Node, the Slidev runtime, the headless browser, ffmpeg and the viewer inside (needs `make node runtime OS=win32`; fetches go-winres, 0BSD, once for the icon) |
-| `make sources` | fetches the source archives a release carries into `.cache/dl/` (online, about 3 GB the first time; needs `git` and `svn`) |
+| `make setup` | builds `dist/windows/Stagepack-Setup.exe`: the installer, with Node, the Slidev runtime, ffmpeg and the viewer inside (needs `make node runtime OS=win32`; fetches go-winres, 0BSD, once for the icon) |
+| `make sources` | fetches ffmpeg's sources, which a release carries, into `.cache/dl/` (online, about 1.2 GB the first time; needs `git`, and `svn` for xvid) |
 | `make release VERSION=0.1.0` | `make test licenses-go`, then both builds with the version stamped in and `make sources`, packed into `dist/release/v0.1.0/` (below) |
 | `make gh-release VERSION=0.1.0` | publishes `dist/release/v0.1.0/` as the GitHub release `v0.1.0` (online) |
 
@@ -345,9 +345,9 @@ it is in the file's version info and in the Settings → Apps entry. Builds with
    | file | what |
    |---|---|
    | `Stagepack-Setup.exe`, `PRESENTER.txt` | the Windows installer and the presenter's guide |
-   | `stagepack-0.1.0-linux-x64.tar.xz` | `dist/linux` (the program, `node/`, `runtimes/`, `browser-shell/`, `ffmpeg/`, without the viewer's own state) and `LICENSE`, in one folder |
-   | `chrome-headless-shell-156.0.8078.4-linux64.zip`, `…-win64.zip`, `ffmpeg-n7.1.5-12-g1fdbca85aa-linux64-gpl-7.1.tar.xz`, `…-win64-gpl-7.1.zip` | the headless browser and ffmpeg as downloaded: their hosts keep old builds only for a while |
-   | `node-v24.22.1.tar.xz`, `chromium-156.0.8078.4-lite.tar.xz`, `FFmpeg-<commit>.tar.gz`, `FFmpeg-Builds-<commit>.tar.gz`, `ffmpeg-n7.1.5-12-g1fdbca85aa-libraries-source.tar.xz` | the sources of the programs beside the viewer (see "Licences"), from `.cache/dl/` |
+   | `stagepack-0.1.0-linux-x64.tar.xz` | `dist/linux` (the program, `node/`, `runtimes/`, `ffmpeg/`, without the viewer's own state) and `LICENSE`, in one folder |
+   | `ffmpeg-n7.1.5-12-g1fdbca85aa-linux64-gpl-7.1.tar.xz`, `…-win64-gpl-7.1.zip` | the bundled ffmpeg as downloaded: BtbN keeps old builds only for a while |
+   | `FFmpeg-<commit>.tar.gz`, `FFmpeg-Builds-<commit>.tar.gz`, `ffmpeg-n7.1.5-12-g1fdbca85aa-libraries-source.tar.xz` | ffmpeg's source (see "Licences"), from `.cache/dl/` |
    | `SHA256SUMS` | of all the files above |
    | `RELEASE_NOTES.md` | the text of the GitHub release |
    | `npm/stagepack-0.1.0.tgz` | the npm launcher (`npm/`), with this version and `SHA256SUMS` inside |
@@ -355,9 +355,14 @@ it is in the file's version info and in the Settings → Apps entry. Builds with
 
    Node and the runtime are reused from `dist/` when they are there (they are pinned by
    `build/versions.env` and `runtime/package-lock.json`); `make node runtime OS=linux` (and `OS=win32`) makes
-   them again. The tarball is the same bytes for the same `dist/linux` and commit. The browser's and ffmpeg's
-   archives and the sources come to about 3.2 GB, Chromium's source alone 2.0 GB (GitHub takes files up to
-   2 GiB; `build/release.sh` checks). `PRERELEASE=1` adds a
+   them again. The tarball is the same bytes for the same `dist/linux` and commit. ffmpeg's archives and
+   sources come to about 0.9 GB (GitHub takes files up to 2 GiB; `build/release.sh` checks). Two of ffmpeg's
+   libraries live only in Subversion: lame comes from SourceForge's snapshot zip of its revision (checked
+   against the hash of its files in `build/ffmpeg-sources.tsv`; when SourceForge has dropped the snapshot, svn
+   is used, or **Download Snapshot** on its revision's page makes it again), and xvid, whose server offers no
+   snapshot, needs `svn`. `make sources` also checks that the licence texts in those sources are the ones in
+   `build/ffmpeg-licenses.txt`, which ship with ffmpeg; when they differ it writes the new ones to
+   `.cache/dl/ffmpeg-licenses.txt` to check and commit. `PRERELEASE=1` adds a
    pre-release note to `RELEASE_NOTES.md`, but not GitHub's pre-release flag: `releases/latest`, which the
    install script and the download link use, skips pre-releases.
 2. Push the commit, then `make gh-release VERSION=0.1.0`. It checks
@@ -385,10 +390,9 @@ runtimes/53/pnpm-workspace.yaml                   marks runtimes/53/ as Vite's w
 runtimes/53/node_modules/@slidev/cli/bin/slidev.mjs
 runtimes/53/node_modules/slidev-addon-stagepack/  the export addon (addon/, copied in by build/addon.sh), inert here
 runtimes/53/node_modules/slidev-pptx-export/      the PowerPoint exporter (runtime/)
-runtimes/53/THIRD_PARTY_LICENSES.txt              the licences of the runtime's packages and of node/, browser-shell/, ffmpeg/
-browser-shell/chrome-headless-shell[.exe]         the headless browser the exporter draws with (Playwright's chromium-headless-shell)
-browser-shell/LICENSE.headless_shell              its licences, Chromium's and its third-party parts'
+runtimes/53/THIRD_PARTY_LICENSES.txt              the licences of the runtime's packages, of node/ and of ffmpeg/
 ffmpeg/ffmpeg[.exe], ffmpeg/LICENSE.txt           ffmpeg, for the clips of the animated copy, and its licence (GPL 3)
+ffmpeg/LIBRARY-LICENSES.txt                       the licences of the libraries linked into it (build/ffmpeg-licenses.txt)
 runtimes/53/work/<id>/                            one opened presentation, unpacked
 journal/<key>.json                                note edits not yet in the .sptx file (kept by uninstall)
 trusted.json                                      presentations allowed to run their code: id and hash of that version
@@ -451,21 +455,20 @@ in Inter Variable.
 |---|---|---|
 | `runtimes/53/node_modules` (685 packages) | 596 MB | 574 MB (27 393 files) |
 | `node/` | 208 MB | 110 MB |
-| `browser-shell/` (Playwright's chromium-headless-shell 156.0.8078.4) | 273 MB | 279 MB (288 files) |
-| `ffmpeg/` (ffmpeg 7.1, static, GPL) | 133 MB | 132 MB |
+| `ffmpeg/` (ffmpeg 7.1, static, GPL, and the licences) | 135 MB | 134 MB |
 
-| download | without the browser and ffmpeg | with them |
+| download | without ffmpeg | with it |
 |---|---|---|
-| `stagepack-<version>-linux-x64.tar.xz` | 118 MB | 240 MB |
-| `Stagepack-Setup.exe` | 186 MB | 363 MB |
+| `stagepack-<version>-linux-x64.tar.xz` | 118 MB | 158 MB |
+| `Stagepack-Setup.exe` | 186 MB | 240 MB |
 
 ## Licences
 
-Stagepack is MIT licensed (see `LICENSE`). The viewer and what it links are permissively licensed, and so are
-the packages of its Slidev runtime, apart from the weak-copyleft exceptions below, which ship unmodified. The
-separate programs it ships and runs as their own processes (Node, the headless browser and ffmpeg) may be GPL
-or LGPL: they are shipped unmodified, each with its licence text in the third-party licence file
-(`runtimes/53/THIRD_PARTY_LICENSES.txt`) and its exact source in Stagepack's release assets.
+Stagepack is MIT licensed (see `LICENSE`). The viewer and what it links stay permissive, with the weak-copyleft
+exceptions below (in its Slidev runtime, unmodified). The separate programs it runs as their own processes (Node,
+ffmpeg) may be under other open-source licences, GPL and LGPL included: they are shipped unmodified, each with
+its licence and notices in the third-party licence file (`runtimes/53/THIRD_PARTY_LICENSES.txt`) and, where its
+licence requires it, its exact source in Stagepack's release assets. Node (MIT) needs no source archive.
 
 `build/runtime.sh` runs `build/licenses.mjs`, which writes `runtimes/53/THIRD_PARTY_LICENSES.txt` and fails on
 any package outside the permissive list (MIT, ISC, BSD-2/3-Clause, Apache-2.0, 0BSD, OFL-1.1, Unlicense, CC0-1.0,
@@ -495,21 +498,22 @@ The npm side is checked by `build/licenses.mjs`, above.
 
 The programs Stagepack ships beside the viewer are listed in `build/programs.tsv`. `build/programs.sh dist/<os>`,
 which `make build-linux` and `make setup` run, fails on a folder of the build that isn't in the list (a new
-program has to be reviewed and added), on a listed program that is missing, and on one without a licence file or
-a source archive. It adds each one's licence text to `THIRD_PARTY_LICENSES.txt`, in a section "Programs shipped
-beside the viewer", with where its source is.
+program has to be reviewed and added), on a listed program that is missing, on a missing licence file, on a
+library linked into a program that has no notices in its licence files, and on a GPL, LGPL, MPL or EPL program
+without a source archive. It adds each one's licence texts to `THIRD_PARTY_LICENSES.txt`, in a section
+"Programs shipped beside the viewer", with where its source is.
 
-| program | version | licence | source, in the release assets |
+| program | version | licence and notices | source, in the release assets |
 |---|---|---|---|
-| Node.js | 24.22.1 | MIT, and the licences of the parts it bundles (`node/LICENSE`) | `node-v24.22.1.tar.xz` |
-| Playwright's `chromium-headless-shell` (Chrome for Testing, Playwright 1.64.1's revision 1248) | 156.0.8078.4 | BSD-3-Clause, and the licences of Chromium's third-party parts, LGPL-2.1-or-later for its ffmpeg among them (`browser-shell/LICENSE.headless_shell`) | `chromium-156.0.8078.4-lite.tar.xz`, Chromium's official source tarball without test data |
-| ffmpeg: BtbN's FFmpeg-Builds `autobuild-2026-07-31-14-10`, static, GPL | n7.1.5-12-g1fdbca85aa | GPL-3.0-or-later (`ffmpeg/LICENSE.txt`); it links libx264 and the other libraries in `build/ffmpeg-sources.tsv` | `FFmpeg-<commit>.tar.gz` (ffmpeg at the commit it was built from), `FFmpeg-Builds-<commit>.tar.gz` (the build scripts) and `ffmpeg-n7.1.5-12-g1fdbca85aa-libraries-source.tar.xz` (every library linked in) |
+| Node.js | 24.22.1 | MIT, and the licences of the parts it bundles (`node/LICENSE`) | none needed (MIT) |
+| ffmpeg: BtbN's FFmpeg-Builds `autobuild-2026-07-31-14-10`, static, GPL | n7.1.5-12-g1fdbca85aa | GPL-3.0-or-later (`ffmpeg/LICENSE.txt`); the libraries linked into it (libx264 and the others in `build/ffmpeg-sources.tsv`) under their own licences, whose texts and notices are in `ffmpeg/LIBRARY-LICENSES.txt` | `FFmpeg-<commit>.tar.gz` (ffmpeg at the commit it was built from), `FFmpeg-Builds-<commit>.tar.gz` (the build scripts) and `ffmpeg-n7.1.5-12-g1fdbca85aa-libraries-source.tar.xz` (every library linked in) |
 
-The binaries and source archives are pinned with their sha256 in `build/versions.env`, which also says where
+ffmpeg's archives and its sources are pinned with their sha256 in `build/versions.env`, which also says where
 each value comes from. The libraries are pinned by commit (two by Subversion revision) in
-`build/ffmpeg-sources.tsv`, listed from BtbN's build scripts at that build's commit; `build/fetch.sh
-ffmpeg-libraries` fetches them into one archive. `make release` puts all of these, and the browser's and ffmpeg's
-own downloads, beside the release's files.
+`build/ffmpeg-sources.tsv`, listed from BtbN's build scripts at that build's commit, with the files that hold
+each one's licence texts and notices. `build/ffmpeg-licenses.txt` holds those texts (`build/fetch.sh
+ffmpeg-libraries` checks it against the sources, and fetches them into one archive). `make release` puts the
+sources and ffmpeg's own downloads beside the release's files.
 
 ## Open items
 

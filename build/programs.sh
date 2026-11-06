@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
 # Usage: build/programs.sh dist/<linux|windows>
-# The programs a build ships beside the viewer (Node, the headless browser, ffmpeg), which the viewer runs as
-# separate processes: checks the build against build/programs.tsv and adds their licence texts to the build's
+# The programs a build ships beside the viewer (Node, ffmpeg), which the viewer runs as separate processes:
+# checks the build against build/programs.tsv and adds their licence texts to the build's
 # runtimes/<major>/THIRD_PARTY_LICENSES.txt, in a section of its own (written again on each run).
 # Fails when a folder of the build is not in the table (a new program: check its licence and add it), when a
-# program in the table is not in the build, when its licence file is missing or empty, or when it names no
-# source archive. Offline. Needs the build's node/, runtimes/ (with THIRD_PARTY_LICENSES.txt) and programs.
-# Policy (README "Licences"): the viewer and what it links stay permissive; these separate programs may be
-# GPL or LGPL, shipped unmodified, each with its licence text here and its exact source in the release assets.
+# program in the table is not in the build, when one of its licence files is missing or empty, when a library
+# linked into it (its parts table) has no notices in them, or when a copyleft program names no source archive.
+# Offline. Needs the build's node/, runtimes/ (with THIRD_PARTY_LICENSES.txt) and ffmpeg/.
+# Policy (README "Licences"): the viewer and what it links stay permissive; these separate programs may be under
+# other open-source licences, GPL and LGPL included, shipped unmodified, each with its licence and notices here
+# and, where its licence asks for it, its exact source in the release assets.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+root="$(dirname "$here")"
 table="$here/programs.tsv"
 releases=https://github.com/Eiriksb/stagepack/releases
 # shellcheck source=versions.env
@@ -37,15 +40,16 @@ expand() {
 	printf '%s' "$s"
 }
 
-names=() versions=() licences=() folders=() files=() sources=()
-while IFS=$'\t' read -r name version licence folder file src; do
+names=() versions=() licences=() folders=() files=() parts=() sources=()
+while IFS=$'\t' read -r name version licence folder file part src; do
 	case "$name" in '#'* | '') continue ;; esac
 	names+=("$name")
 	versions+=("$(expand "$version")")
 	licences+=("$licence")
 	folders+=("$folder")
 	files+=("$file")
-	sources+=("$(expand "${src:-}")")
+	parts+=("${part:--}")
+	sources+=("$(expand "${src:--}")")
 done <"$table"
 
 # every folder of the build is a listed program (or not a program)
@@ -57,12 +61,28 @@ for d in "$dist"/*/; do
 	[ "$listed" = 1 ] || fail "$dist/$d/ is not in build/programs.tsv: check its licence and add it"
 done
 
-printf '%-46s %-22s %s\n' program version "licence file"
+printf '%-10s %-22s %s\n' program version "licence files"
 for i in "${!names[@]}"; do
-	printf '%-46s %-22s %s\n' "${names[$i]}" "${versions[$i]%%,*}" "${files[$i]}"
+	printf '%-10s %-22s %s\n' "${names[$i]}" "${versions[$i]%%,*}" "${files[$i]}"
 	[ -d "$dist/${folders[$i]}" ] || { fail "${names[$i]} is not in $dist/${folders[$i]}/"; continue; }
-	[ -s "$dist/${files[$i]}" ] || fail "${names[$i]}: no licence file $dist/${files[$i]}"
-	[ -n "${sources[$i]// /}" ] || fail "${names[$i]}: build/programs.tsv names no source archive"
+	for f in ${files[$i]}; do
+		[ -s "$dist/$f" ] || fail "${names[$i]}: no licence file $dist/$f"
+	done
+	# a copyleft licence asks for the source
+	if [[ "${licences[$i]}" =~ (^|[^A-Za-z])(L?GPL|AGPL|MPL|EPL) ]] && [ "${sources[$i]}" = - ]; then
+		fail "${names[$i]} is ${BASH_REMATCH[2]}: build/programs.tsv must name its source archives"
+	fi
+	# every library linked in has its notices in the licence files
+	if [ "${parts[$i]}" != - ]; then
+		have="$(for f in ${files[$i]}; do [ -f "$dist/$f" ] && grep -a '^==== ' "$dist/$f"; done || true)"
+		missing=0
+		while IFS=$'\t' read -r p _ url ref rest; do
+			case "$p" in '#'* | '') continue ;; esac
+			[ "${rest##*$'\t'}" = - ] && continue
+			grep -qxF "==== $p $url $ref" <<<"$have" || { echo "  no notices for $p at $ref" >&2; missing=$((missing + 1)); }
+		done <"$root/${parts[$i]}"
+		[ "$missing" = 0 ] || fail "${names[$i]}: $missing of the libraries in ${parts[$i]} have no notices in ${files[$i]}"
+	fi
 done
 [ "$failed" = 0 ] || exit 1
 
@@ -77,23 +97,24 @@ awk -v m="$marker" '$0 == m { exit } { line[++n] = $0 } END { while (n > 0 && li
 {
 	printf '\n\n%s\n\n' "$marker"
 	echo "Stagepack runs these programs as their own processes; it does not link them. They are shipped exactly as"
-	echo "published, unmodified. Each GitHub release of Stagepack carries, as release assets, a copy of the source"
-	echo "archives named below, downloaded from the URLs given: $releases"
+	echo "published, unmodified. Where a licence asks for the source, each GitHub release of Stagepack carries, as"
+	echo "release assets, a copy of the source archives named below, downloaded from the URLs given: $releases"
 	for i in "${!names[@]}"; do
 		printf '\n%s %s\n' "${names[$i]}" "${versions[$i]}"
 		printf 'Licence: %s\n' "${licences[$i]}"
 		printf 'Installed in: %s/\n' "${folders[$i]}"
 		for s in ${sources[$i]}; do
 			case "$s" in
+				-) ;;
 				*=*://*) printf 'Source: %s (release asset %s)\n' "${s#*=}" "${s%%=*}" ;;
 				*://*) printf 'Source: %s (release asset %s)\n' "$s" "${s##*/}" ;;
 				*) printf 'Source: release asset %s (made by the release from the sources in its SOURCES.tsv)\n' "$s" ;;
 			esac
 		done
-		printf '%s\n' "------------------------------------------------------------"
-		cat "$dist/${files[$i]}"
-		echo
+		for f in ${files[$i]}; do
+			printf '%s\n%s\n' "------------------------------------------------------------ $f" "$(cat "$dist/$f")"
+		done
 	done
 } >>"$tp.part"
 mv "$tp.part" "$tp"
-echo "ok: ${#names[@]} programs, each listed with its licence text and source: $tp"
+echo "ok: ${#names[@]} programs, each listed with its licence texts and notices: $tp"

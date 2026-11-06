@@ -1,13 +1,17 @@
 # The programs Stagepack ships beside the viewer, which it runs as separate processes, unmodified (see
 # "Licences" in the README). build/programs.sh dist/<os> checks a build against this list and adds each
-# licence text to the build's THIRD_PARTY_LICENSES.txt. ${NAME} is a value from build/versions.env.
+# program's licence texts to the build's THIRD_PARTY_LICENSES.txt. ${NAME} is a value from build/versions.env.
 #
 # folder: the program's folder in dist/<os> and in the install folder
-# licence file: its licence text, relative to dist/<os> (the same on Linux and Windows)
+# licence files: its licence texts and notices, separated by spaces, relative to dist/<os> (the same on Linux
+#   and Windows)
+# parts: a table of the libraries linked into the program, laid out as build/ffmpeg-sources.tsv (folder, kind,
+#   url and ref first, its licence files last); each row whose last column is not - must have its notices in the
+#   licence files, under "==== <folder> <url> <ref>". - for a program without such a table
 # sources: the source archives, separated by spaces, each mirrored in Stagepack's release assets: a URL (the
 #   asset has its file name), NAME=URL (the asset is called NAME), or a NAME alone for an archive the release
-#   makes itself (build/fetch.sh ffmpeg-libraries). The names are those build/fetch.sh gives them in .cache/dl.
-# name	version	licence	folder	licence file	sources
-Node.js	${NODE_VERSION}	MIT, and the licences of the parts it bundles (in its LICENSE)	node	node/LICENSE	${NODE_SOURCE_URL}
-chromium-headless-shell (Chrome for Testing)	${CHROMIUM_SHELL_VERSION}, Playwright ${PLAYWRIGHT_VERSION} revision ${CHROMIUM_SHELL_REVISION}	BSD-3-Clause (Chromium), and the licences of its third-party parts, among them LGPL-2.1-or-later (its ffmpeg)	browser-shell	browser-shell/LICENSE.headless_shell	${CHROMIUM_SOURCE_URL}
-ffmpeg	${FFMPEG_VERSION}, BtbN FFmpeg-Builds ${FFMPEG_BUILD}, static, GPL	GPL-3.0-or-later (built with --enable-gpl --enable-version3; links libx264 and the other libraries in build/ffmpeg-sources.tsv)	ffmpeg	ffmpeg/LICENSE.txt	FFmpeg-${FFMPEG_COMMIT}.tar.gz=${FFMPEG_SOURCE_URL} FFmpeg-Builds-${FFMPEG_BUILDS_COMMIT}.tar.gz=${FFMPEG_BUILDS_SOURCE_URL} ffmpeg-${FFMPEG_VERSION}-libraries-source.tar.xz
+#   makes itself (build/fetch.sh ffmpeg-libraries). - when the licence asks for no source (a copyleft licence,
+#   GPL, LGPL, AGPL, MPL or EPL, does). The names are those build/fetch.sh gives them in .cache/dl.
+# name	version	licence	folder	licence files	parts	sources
+Node.js	${NODE_VERSION}	MIT, and the licences of the parts it bundles (in its LICENSE)	node	node/LICENSE	-	-
+ffmpeg	${FFMPEG_VERSION}, BtbN FFmpeg-Builds ${FFMPEG_BUILD}, static, GPL	GPL-3.0-or-later (built with --enable-gpl --enable-version3), linking libx264 and the other libraries in build/ffmpeg-sources.tsv under their own licences	ffmpeg	ffmpeg/LICENSE.txt ffmpeg/LIBRARY-LICENSES.txt	build/ffmpeg-sources.tsv	FFmpeg-${FFMPEG_COMMIT}.tar.gz=${FFMPEG_SOURCE_URL} FFmpeg-Builds-${FFMPEG_BUILDS_COMMIT}.tar.gz=${FFMPEG_BUILDS_SOURCE_URL} ffmpeg-${FFMPEG_VERSION}-libraries-source.tar.xz

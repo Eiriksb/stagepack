@@ -1,5 +1,5 @@
 # Stagepack: pack a Slidev talk into one .sptx file.
-# Go, Node, the headless browser and ffmpeg are fetched once into .cache/ (pinned, checksummed): see build/fetch.sh.
+# Go, Node and ffmpeg are fetched once into .cache/ (pinned, checksummed): see build/fetch.sh.
 
 GO := $(CURDIR)/.cache/go/bin/go
 GOFMT := $(CURDIR)/.cache/go/bin/gofmt
@@ -11,23 +11,21 @@ ifeq ($(OS),win32)
 DIST_OS := windows
 NODE_DIR := node-v$(NODE_VERSION)-win-x64
 NODE_FETCH := node-win
-PROGRAMS_FETCH := shell-win ffmpeg-win
-SHELL_DIR := chrome-headless-shell-$(CHROMIUM_SHELL_VERSION)-win64/chrome-headless-shell-win64
+FFMPEG_FETCH := ffmpeg-win
 FFMPEG_DIR := $(basename $(notdir $(FFMPEG_URL_WIN_X64)))
 EXE := .exe
 else ifeq ($(OS),linux)
 DIST_OS := linux
 NODE_DIR := node-v$(NODE_VERSION)-linux-x64
 NODE_FETCH := node-linux
-PROGRAMS_FETCH := shell-linux ffmpeg-linux
-SHELL_DIR := chrome-headless-shell-$(CHROMIUM_SHELL_VERSION)-linux64/chrome-headless-shell-linux64
+FFMPEG_FETCH := ffmpeg-linux
 FFMPEG_DIR := $(basename $(basename $(notdir $(FFMPEG_URL_LINUX_X64))))
 EXE :=
 else
 $(error OS must be linux or win32, not $(OS))
 endif
 
-.PHONY: go node-linux node-win node shell-linux shell-win ffmpeg-linux ffmpeg-win programs sources runtime test e2e payload winres viewer setup build-linux build-windows licenses-go release gh-release
+.PHONY: go node-linux node-win node ffmpeg-linux ffmpeg-win programs sources runtime test e2e payload winres viewer setup build-linux build-windows licenses-go release gh-release
 
 # VERSION (0.1.0, no "v") is stamped into the programs (`stagepack version`, the Windows version info and
 # uninstall entry). `make release VERSION=0.1.0` sets it; other builds are "dev".
@@ -49,20 +47,20 @@ node: $(NODE_FETCH)
 	mkdir -p dist/$(DIST_OS)
 	cp -a .cache/$(NODE_DIR) dist/$(DIST_OS)/node
 
-shell-linux shell-win ffmpeg-linux ffmpeg-win:
+ffmpeg-linux ffmpeg-win:
 	build/fetch.sh $@
 
-# dist/<os>/browser-shell/: Playwright's chromium-headless-shell as its zip has it (chrome-headless-shell[.exe]
-# at the top); dist/<os>/ffmpeg/: ffmpeg[.exe] and its LICENSE.txt. Copied from .cache/ each time, so they are
-# always the ones build/versions.env pins.
-programs: $(PROGRAMS_FETCH)
-	rm -rf dist/$(DIST_OS)/browser-shell dist/$(DIST_OS)/ffmpeg
+# dist/<os>/ffmpeg/: ffmpeg[.exe], its LICENSE.txt, and LIBRARY-LICENSES.txt, the licence texts of the libraries
+# linked into it (build/ffmpeg-licenses.txt). Copied from .cache/ each time, so it is always the one
+# build/versions.env pins.
+programs: $(FFMPEG_FETCH)
+	rm -rf dist/$(DIST_OS)/ffmpeg
 	mkdir -p dist/$(DIST_OS)/ffmpeg
-	cp -a .cache/$(SHELL_DIR) dist/$(DIST_OS)/browser-shell
 	cp .cache/$(FFMPEG_DIR)/bin/ffmpeg$(EXE) .cache/$(FFMPEG_DIR)/LICENSE.txt dist/$(DIST_OS)/ffmpeg/
+	cp build/ffmpeg-licenses.txt dist/$(DIST_OS)/ffmpeg/LIBRARY-LICENSES.txt
 
-# .cache/dl/: the source archives a release mirrors (Node, Chromium, ffmpeg, BtbN's build scripts and the
-# libraries linked into ffmpeg; see build/programs.tsv). Online, about 3 GB the first time; needs git and svn.
+# .cache/dl/: the source archives a release mirrors (ffmpeg, BtbN's build scripts and the libraries linked into
+# ffmpeg; see build/programs.tsv). Online, about 1.2 GB the first time; needs git, and svn for xvid.
 sources:
 	build/fetch.sh sources
 	build/fetch.sh ffmpeg-libraries
@@ -91,7 +89,7 @@ build: go
 viewer: go winres
 	GOOS=windows GOARCH=amd64 $(GO) build -trimpath -ldflags "-H=windowsgui -s -w $(GO_LDFLAGS)" -o dist/windows/stagepack.exe ./cmd/stagepack
 
-# internal/install/payload.zip: the Windows node/, runtimes/, browser-shell/ and ffmpeg/ and the viewer, to embed
+# internal/install/payload.zip: the Windows node/, runtimes/ and ffmpeg/ and the viewer, to embed
 # (needs `make node runtime programs OS=win32` and `make viewer`)
 payload:
 	build/payload.sh
@@ -113,8 +111,8 @@ setup: viewer
 	GOOS=windows GOARCH=amd64 $(GO) build -tags payload -trimpath -ldflags "-H=windowsgui -s -w $(GO_LDFLAGS)" -o dist/windows/$(SETUP_NAME) ./cmd/stagepack
 
 # The finished builds. The 600 MB node/ and runtimes/ are made only when they are missing (they depend on
-# the directories, not on a phony rebuild); `make node runtime OS=...` forces them again. browser-shell/ and
-# ffmpeg/ are copied from .cache/ each time (`make programs`), and build/programs.sh checks them.
+# the directories, not on a phony rebuild); `make node runtime OS=...` forces them again. ffmpeg/ is copied
+# from .cache/ each time (`make programs`), and build/programs.sh checks the programs beside the viewer.
 LINUX_NODE := dist/linux/node/bin/node
 LINUX_RUNTIME := dist/linux/runtimes/53/node_modules/@slidev/cli/bin/slidev.mjs
 WIN_NODE := dist/windows/node/node.exe
@@ -132,7 +130,7 @@ $(WIN_NODE):
 $(WIN_RUNTIME):
 	$(MAKE) runtime OS=win32
 
-# dist/linux/stagepack with node/, runtimes/, browser-shell/ and ffmpeg/ beside it: the layout `stagepack open`,
+# dist/linux/stagepack with node/, runtimes/ and ffmpeg/ beside it: the layout `stagepack open`,
 # `stagepack export-pptx` and the e2e tests expect
 build-linux: $(LINUX_NODE) $(LINUX_RUNTIME)
 	build/addon.sh linux
