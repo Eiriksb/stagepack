@@ -23,14 +23,16 @@ import (
 // Paths are the programs the exporter needs, all under the app's home folder.
 type Paths struct{ Node, CLI, Browser, FFmpeg string }
 
-// PathsFor lays out the files under home for the given GOOS.
+// PathsFor lays out the files under home for the given GOOS. Node keeps its
+// own layouts, as opening has them: node.exe at the top on Windows, bin/node
+// on Linux.
 func PathsFor(home, goos string) Paths {
-	exe := ""
+	exe, node := "", filepath.Join(home, "node", "bin", "node")
 	if goos == "windows" {
-		exe = ".exe"
+		exe, node = ".exe", filepath.Join(home, "node", "node.exe")
 	}
 	return Paths{
-		Node:    filepath.Join(home, "node", "node"+exe),
+		Node:    node,
 		CLI:     filepath.Join(home, "runtimes", strconv.Itoa(slidevrt.Major()), "node_modules", "slidev-pptx-export", "bin", "cli.mjs"),
 		Browser: filepath.Join(home, "browser-shell", "chrome-headless-shell"+exe),
 		FFmpeg:  filepath.Join(home, "ffmpeg", "ffmpeg"+exe),

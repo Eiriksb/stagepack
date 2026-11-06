@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	slidevrt "stagepack/runtime"
 )
 
 // The test binary doubles as a fake exporter: Command runs it as "Node", and
@@ -107,14 +109,17 @@ func TestCommandArgsAndEnv(t *testing.T) {
 }
 
 func TestPathsFor(t *testing.T) {
-	l := PathsFor("/h", "linux")
-	if l.Node != filepath.Join("/h", "node", "node") || l.Browser != filepath.Join("/h", "browser-shell", "chrome-headless-shell") ||
-		l.FFmpeg != filepath.Join("/h", "ffmpeg", "ffmpeg") || !strings.HasSuffix(l.CLI, filepath.Join("node_modules", "slidev-pptx-export", "bin", "cli.mjs")) {
-		t.Errorf("linux paths %+v", l)
-	}
-	w := PathsFor("/h", "windows")
-	if !strings.HasSuffix(w.Node, "node.exe") || !strings.HasSuffix(w.Browser, "chrome-headless-shell.exe") || !strings.HasSuffix(w.FFmpeg, "ffmpeg.exe") {
-		t.Errorf("windows paths %+v", w)
+	cli := filepath.Join("/h", "runtimes", strconv.Itoa(slidevrt.Major()), "node_modules", "slidev-pptx-export", "bin", "cli.mjs")
+	// Node's own layouts, as opening has them: bin/node on Linux, node.exe at the top on Windows.
+	for goos, want := range map[string]Paths{
+		"linux": {Node: filepath.Join("/h", "node", "bin", "node"), CLI: cli,
+			Browser: filepath.Join("/h", "browser-shell", "chrome-headless-shell"), FFmpeg: filepath.Join("/h", "ffmpeg", "ffmpeg")},
+		"windows": {Node: filepath.Join("/h", "node", "node.exe"), CLI: cli,
+			Browser: filepath.Join("/h", "browser-shell", "chrome-headless-shell.exe"), FFmpeg: filepath.Join("/h", "ffmpeg", "ffmpeg.exe")},
+	} {
+		if got := PathsFor("/h", goos); got != want {
+			t.Errorf("%s paths\n%+v\nwant\n%+v", goos, got, want)
+		}
 	}
 }
 
