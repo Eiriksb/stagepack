@@ -23,7 +23,7 @@ Repositories:
 - Nothing installed for the person exporting beyond Stagepack; no download at export time.
 - No `.pptx` left half-written after Cancel or a failure; the work folder is removed as when a presentation closes.
 - A presentation with code is not run without Stagepack's "contains code" question: same text, same trust store, same remembered answer as opening.
-- Licence policy (README "Licences", reworded in Task B1): the viewer and what it links stay permissive (with the existing weak-copyleft exceptions); separate programs it runs as their own processes (Node, the headless browser, ffmpeg) may be GPL or LGPL, shipped unmodified, each with its licence text in the third-party licence file and its exact source in Stagepack's release assets.
+- Licence policy (README "Licences", reworded in Task 6): the viewer and what it links stay permissive (with the existing weak-copyleft exceptions); separate programs it runs as their own processes (Node, the headless browser, ffmpeg) may be GPL or LGPL, shipped unmodified, each with its licence text in the third-party licence file and its exact source in Stagepack's release assets.
 - Exporter environment variables: `SLIDEV_PPTX_BROWSER` (browser executable) and `SLIDEV_PPTX_FFMPEG` (ffmpeg program); config keys `render.browser` and `render.ffmpeg` win over them.
 - Exporter progress: `--progress json` writes one JSON object per line to stdout and nothing else there; human-readable notices stay on stderr.
 - Exporter commits end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`; PR bodies end with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`. The same in Stagepack.
@@ -31,17 +31,17 @@ Repositories:
 
 ## Review Focus
 
-- A `.sptx` whose path has spaces, quotes, `$` or non-ASCII letters exports from every menu entry with the path intact. Pinned in Task B8.
-- A `.sptx` in a folder that can't be written (a mounted share, a read-only download folder) asks where to save instead of failing. Pinned in Task B6.
-- Cancel at any moment, including while Slidev starts or a click is recorded, leaves no `.partial`, no work folder and no Slidev, browser or ffmpeg process. Pinned in Tasks B3 and B6.
-- An exporter that fails part-way (a slide error, a crash) gives one sentence and the log's location, and no file. Pinned in Task B6.
-- Two exports of different files run together; the same file twice is refused while the first runs, and a lock left by a killed export doesn't block the next. Pinned in Task B6.
+- A `.sptx` whose path has spaces, quotes, `$` or non-ASCII letters exports from every menu entry with the path intact. Pinned in Task 13.
+- A `.sptx` in a folder that can't be written (a mounted share, a read-only download folder) asks where to save instead of failing. Pinned in Task 11.
+- Cancel at any moment, including while Slidev starts or a click is recorded, leaves no `.partial`, no work folder and no Slidev, browser or ffmpeg process. Pinned in Tasks 8 and 11.
+- An exporter that fails part-way (a slide error, a crash) gives one sentence and the log's location, and no file. Pinned in Task 11.
+- Two exports of different files run together; the same file twice is refused while the first runs, and a lock left by a killed export doesn't block the next. Pinned in Task 11.
 
 ---
 
 ## Part A: slidev-pptx-export
 
-### Task A1: Use playwright-core with a named browser
+### Task 1: Use playwright-core with a named browser
 
 **Files:**
 - Modify: `src/render/browser.mjs`, `src/render/index.mjs` (the launch in `renderSpecs`)
@@ -75,7 +75,7 @@ Expected: FAIL (no `importer` option, playwright-core not tried, `launch` called
 
 - [ ] **Step 5: Commit** — `Render mode: drive a named browser through playwright-core`.
 
-### Task A2: One ffmpeg path for every use of ffmpeg
+### Task 2: One ffmpeg path for every use of ffmpeg
 
 **Files:**
 - Modify: `src/render/encode.mjs`, `src/render/animate.mjs`, `src/render/index.mjs`, `src/render/click-states.mjs`
@@ -109,7 +109,7 @@ In `test/render-index.test.mjs`: with `render: { ffmpeg: "/opt/ff/ffmpeg" }` the
 
 - [ ] **Step 5: Commit** — `Render mode: render.ffmpeg names the ffmpeg for clips and animated pictures alike`.
 
-### Task A3: Progress events and `--progress json`
+### Task 3: Progress events and `--progress json`
 
 **Files:**
 - Modify: `src/index.mjs` (`convert`), `src/render/index.mjs`, `src/render/capture.mjs` (`captureDeck`), `src/render/click-states.mjs`, `bin/cli.mjs`
@@ -140,7 +140,7 @@ In `click-states.test.mjs`, for `TO_WHITE` with a fake recording: the events are
 
 - [ ] **Step 5: Commit** — `Export: --progress json reports each step as a JSON line`.
 
-### Task A4: Write the .pptx atomically
+### Task 4: Write the .pptx atomically
 
 **Files:**
 - Create: `src/write.mjs`
@@ -177,12 +177,12 @@ In `test/convert.test.mjs`: after converting the kitchen-sink fixture into an em
 
 - [ ] **Step 5: Commit** — `Export: write the .pptx under a temporary name and rename it when done`.
 
-### Task A5: Exporter README and its PR
+### Task 5: Exporter README and its PR
 
 **Files:**
 - Modify: `README.md`, `bin/cli.mjs` (usage comment)
 
-- [ ] **Step 1:** README: `render.browser`, `render.ffmpeg`, their environment variables, `--progress json` with the event list from Task A3, and a short "From a .sptx" section: Stagepack's installers bring the exporter, a browser and ffmpeg; right-click a `.sptx`. CLI header comment lists `--progress json`.
+- [ ] **Step 1:** README: `render.browser`, `render.ffmpeg`, their environment variables, `--progress json` with the event list from Task 3, and a short "From a .sptx" section: Stagepack's installers bring the exporter, a browser and ffmpeg; right-click a `.sptx`. CLI header comment lists `--progress json`.
 - [ ] **Step 2:** Run `npm test && npm run test:render`. Expected: PASS, fixture tests run.
 - [ ] **Step 3:** Commit `README: the options Stagepack uses, and exporting from a .sptx`; push `claude/stagepack-export`; open a PR with base `claude/funny-elbakyan-12961d` (PR #4). Body: what each change is for, that Stagepack consumes them, what was tested.
 
@@ -190,7 +190,7 @@ In `test/convert.test.mjs`: after converting the kitchen-sink fixture into an em
 
 ## Part B: Stagepack
 
-### Task B1: Bundle the headless browser and ffmpeg, with the licence policy reworded
+### Task 6: Bundle the headless browser and ffmpeg, with the licence policy reworded
 
 **Files:**
 - Modify: `build/versions.env`, `build/fetch.sh`, `Makefile`, `build/payload.sh`, `build/release.sh`, `README.md` (Licences, Layout, Install), `.gitignore` if needed
@@ -207,11 +207,11 @@ In `test/convert.test.mjs`: after converting the kitchen-sink fixture into an em
 - [ ] **Step 6:** Run `make build-linux && build/programs.sh dist/linux && ls dist/linux/browser-shell dist/linux/ffmpeg`. Expected: both present, the check passes; `dist/linux/ffmpeg/ffmpeg -hide_banner -encoders | grep libx264` prints a line; `dist/linux/browser-shell/chrome-headless-shell --version` prints a version. Run `make build-windows` too. Expected: both present.
 - [ ] **Step 7:** Commit `Build: bundle Playwright's headless Chromium and ffmpeg, and reword the licence policy for separate programs`.
 
-### Task B2: The exporter in the runtime
+### Task 7: The exporter in the runtime
 
 **Files:**
 - Modify: `runtime/package.json`, `runtime/package-lock.json`
-- Create: `runtime/vendor/slidev-pptx-export-<version>-dev.tgz` (removed again in Task B12)
+- Create: `runtime/vendor/slidev-pptx-export-<version>-dev.tgz` (removed again in Task 17)
 
 **Interfaces:**
 - Consumes: Part A's branch, packed with `npm pack`.
@@ -221,7 +221,7 @@ In `test/convert.test.mjs`: after converting the kitchen-sink fixture into an em
 - [ ] **Step 2:** Run `make runtime OS=linux`. Expected: `build/licenses.mjs` passes, and `THIRD_PARTY_LICENSES.txt` lists both packages and their dependencies.
 - [ ] **Step 3:** Commit `Runtime: slidev-pptx-export and playwright-core (development build of the exporter)`.
 
-### Task B3: Run the exporter
+### Task 8: Run the exporter
 
 **Files:**
 - Create: `internal/export/run.go`, `internal/export/proc_linux.go`, `internal/export/proc_windows.go`, `internal/export/run_test.go`
@@ -230,7 +230,7 @@ In `test/convert.test.mjs`: after converting the kitchen-sink fixture into an em
 - Produces:
   - `type Paths struct{ Node, CLI, Browser, FFmpeg string }` and `func PathsFor(home, goos string) Paths` (`node/node[.exe]`, `runtimes/<major>/node_modules/slidev-pptx-export/bin/cli.mjs`, `browser-shell/chrome-headless-shell[.exe]`, `ffmpeg/ffmpeg[.exe]`).
   - `type Job struct{ Slides string /* the slides file in the work folder */; Out string; Animations bool }`
-  - `type Event struct{ Event string; Slides, Slide, States, State, Click, Clips int; Seconds float64; Bytes int64; Path, Text, Message string }` with JSON tags matching Task A3.
+  - `type Event struct{ Event string; Slides, Slide, States, State, Click, Clips int; Seconds float64; Bytes int64; Path, Text, Message string }` with JSON tags matching Task 3.
   - `func Command(p Paths, j Job) *exec.Cmd`: `node <CLI> <Slides> <Out> --render [--animations] --progress json`, run in the slides file's folder, environment plus `SLIDEV_PPTX_BROWSER=<Browser>` and `SLIDEV_PPTX_FFMPEG=<FFmpeg>`.
   - `func Run(ctx context.Context, cmd *exec.Cmd, out string, onEvent func(Event)) error`: starts it in a process group (Linux) or job object (Windows), as `internal/slidev` does; calls `onEvent` per stdout line; on `ctx` cancel stops the group (polite, then kill after 5 s) and returns `context.Canceled`; returns an error carrying the `error` event's message when the exit code isn't 0; always removes `out + ".partial"` unless the exit was clean.
 
@@ -244,7 +244,7 @@ In `test/convert.test.mjs`: after converting the kitchen-sink fixture into an em
 - [ ] **Step 4: Run** `go test ./internal/export/ && GOOS=windows go vet ./internal/export/` — Expected: PASS.
 - [ ] **Step 5: Commit** `Export: run slidev-pptx-export and read its progress`.
 
-### Task B4: Progress text
+### Task 9: Progress text
 
 **Files:**
 - Create: `internal/export/progress.go`, `internal/export/progress_test.go`
@@ -261,7 +261,7 @@ In `test/convert.test.mjs`: after converting the kitchen-sink fixture into an em
 - [ ] **Step 4: Run** — Expected: PASS.
 - [ ] **Step 5: Commit** `Export: the progress box's text and bar, from the exporter's events`.
 
-### Task B5: The progress box and the finished box
+### Task 10: The progress box and the finished box
 
 **Files:**
 - Create: `internal/ui/progress.go` (interface and headless), `internal/ui/progress_unix.go`, `internal/ui/progress_windows.go`, `internal/ui/progress_unix_test.go`, `internal/ui/progress_test.go`
@@ -282,17 +282,17 @@ In `test/convert.test.mjs`: after converting the kitchen-sink fixture into an em
 - [ ] **Step 4: Run** `go test ./internal/ui/ && GOOS=windows go build ./... && GOOS=windows go vet ./internal/ui/` — Expected: PASS. Run `make winres` and check the manifest names `Microsoft.Windows.Common-Controls` version 6.
 - [ ] **Step 5: Commit** `UI: a progress box with Cancel, and a finished box with buttons, on Linux and Windows`.
 
-### Task B6: The export session
+### Task 11: The export session
 
 **Files:**
 - Create: `internal/export/export.go`, `internal/export/export_test.go`
 - Modify: `internal/app/app.go` (export `CodeQuestion`, used by both)
 
 **Interfaces:**
-- Consumes: `workspace.Extract`, `workspace.Remove`, `trust.Store`, `app.CodeQuestion`, `instance.Key`, Tasks B3 to B5.
+- Consumes: `workspace.Extract`, `workspace.Remove`, `trust.Store`, `app.CodeQuestion`, `instance.Key`, Tasks 8 to 10.
 - Produces:
   - `type Dialogs interface{ Confirm(title, msg string) bool; AskSavePath(suggest string) (string, bool); Error(title, msg string); ShowProgress(title, head string) ui.Progress; Finished(title, msg string, buttons []string) int }` with `func PlatformDialogs() Dialogs` and `func HeadlessDialogs(w io.Writer) Dialogs`.
-  - `type Options struct{ Home, DeckPath string; Animations bool; Dialogs Dialogs; GOOS string; TrustCode, Replace bool; Run func(ctx context.Context, cmd *exec.Cmd, out string, onEvent func(Event)) error; Open func(path string) error; Reveal func(path string) error }` (`Run` defaults to Task B3's, `Open` to `browser.Open`, `Reveal` to `xdg-open <folder>` or `explorer /select,<path>`).
+  - `type Options struct{ Home, DeckPath string; Animations bool; Dialogs Dialogs; GOOS string; TrustCode, Replace bool; Run func(ctx context.Context, cmd *exec.Cmd, out string, onEvent func(Event)) error; Open func(path string) error; Reveal func(path string) error }` (`Run` defaults to Task 8's, `Open` to `browser.Open`, `Reveal` to `xdg-open <folder>` or `explorer /select,<path>`).
   - `func Export(ctx context.Context, o Options) (Result, error)`; `type Result struct{ Path string; Slides, Clips int; Bytes int64; Notes []string }`.
   - `var ErrBusy`, `var ErrNotTrusted` (wrapping `app.ErrNotTrusted`'s meaning), `ErrCancelled`.
 - Behaviour, in order: lock `<home>/instances/<instance.Key(deck)>.export` (created exclusively, holding the PID; a lock whose PID no longer runs is taken over) else `ErrBusy` with "Already exporting <file>"; choose the output (Global Constraints); if it exists and not `Replace`, `Confirm("Replace <name>?")`, No → nothing run; if its folder can't be written, `AskSavePath(<home dir>/<name>)`, cancelled → nothing run; extract; code question as opening asks it (trusted store, remember Yes); progress box; run; on Cancel → `ErrCancelled`; on failure → `Error` with one sentence (`"Couldn't export <file>: <first line of the message>. The log is in <home>/logs."`); on success → `Finished("Exported <name>", "<slides> slides, <clips> with a video, <MB> MB" + notes, ["Open", "Show in folder", "Close"])`. Notes: up to three `notice` texts that are neither `… clip, … MB.` nor `… exported as a picture …`; picture notices become one line, `"<n> parts are pictures"`. The work folder and the lock are removed in every case.
@@ -313,7 +313,7 @@ In `test/convert.test.mjs`: after converting the kitchen-sink fixture into an em
 - [ ] **Step 4: Run** `go test ./... && GOOS=windows go vet ./...` — Expected: PASS, opening's tests unchanged.
 - [ ] **Step 5: Commit** `Export: unpack, ask, run and report an export of a .sptx`.
 
-### Task B7: `stagepack export-pptx`
+### Task 12: `stagepack export-pptx`
 
 **Files:**
 - Modify: `cmd/stagepack/main.go`, `cmd/stagepack/main_test.go`
@@ -327,7 +327,7 @@ In `test/convert.test.mjs`: after converting the kitchen-sink fixture into an em
 - [ ] **Step 4: Run** `go test ./...` — Expected: PASS.
 - [ ] **Step 5: Commit** `stagepack export-pptx: export a .sptx to PowerPoint`.
 
-### Task B8: The right-click entries
+### Task 13: The right-click entries
 
 **Files:**
 - Modify: `internal/install/install.go` (`RegistryPlan`), `internal/install/xdg.go` (`xdgFile` gains `mode fs.FileMode`, `xdgFiles`, `ownedXDGFiles`), `internal/install/install_test.go`, `internal/install/xdg_test.go`
@@ -343,31 +343,31 @@ In `test/convert.test.mjs`: after converting the kitchen-sink fixture into an em
 - [ ] **Step 4: Run** `go test ./... && GOOS=windows go vet ./internal/install/` — Expected: PASS.
 - [ ] **Step 5: Commit** `Install: Export to PowerPoint in the right-click menu on Windows, KDE and GNOME`.
 
-### Task B9: READMEs
+### Task 14: READMEs
 
 **Files:**
 - Modify: `README.md`, `addon/README.md`, `npm/README.md`
 
-- [ ] **Step 1:** README "For presenters": the two entries and where each desktop shows them (Windows 11's "Show more options"; GNOME's Scripts and Open With; KDE's plain entries), the progress box, the output names, Cancel, and that the animated copy is for PowerPoint for the web and desktop PowerPoint (after Task B11, say what was checked); "For authors": `stagepack export-pptx`; "Install": the one-line installs bring the export too, with the sizes from Task B1; Layout: the new files. `addon/README.md` and `npm/README.md`: one line each pointing to it.
+- [ ] **Step 1:** README "For presenters": the two entries and where each desktop shows them (Windows 11's "Show more options"; GNOME's Scripts and Open With; KDE's plain entries), the progress box, the output names, Cancel, and that the animated copy is for PowerPoint for the web and desktop PowerPoint (after Task 16, say what was checked); "For authors": `stagepack export-pptx`; "Install": the one-line installs bring the export too, with the sizes from Task 6; Layout: the new files. `addon/README.md` and `npm/README.md`: one line each pointing to it.
 - [ ] **Step 2:** Commit `README: Export to PowerPoint from the right-click menu`.
 
-### Task B10: Linux end to end
+### Task 15: Linux end to end
 
 - [ ] **Step 1:** `make build-linux`, then install into a temporary home: `dist/linux/stagepack install --yes --home <tmp>` with `XDG_DATA_HOME=<tmp-data>`.
 - [ ] **Step 2:** Pack `examples/<an example presentation>` and the exporter's fixture deck (`test/fixtures/animated-deck` in the exporter repo, without its `node_modules`) with `stagepack pack`; run `<tmp>/stagepack export-pptx --headless --trust-code` and `--animations` on each.
-  Expected: four `.pptx` files next to the `.sptx` files, no `.partial`, no work folders left under `<tmp>/runtimes/53/work`; the exporter found the runtime's Slidev by walking up from the work folder, with no option for it (the design asks this to be confirmed: if it didn't, add a `render.slidevCli` option in Part A, test first, and pass it in Task B3's `Command`); the animated fixture export has 4 slides and one `.mp4`; each passes the exporter's `lintPackage` (run `node -e` with `import("<exporter>/test/lint.mjs")`).
+  Expected: four `.pptx` files next to the `.sptx` files, no `.partial`, no work folders left under `<tmp>/runtimes/53/work`; the exporter found the runtime's Slidev by walking up from the work folder, with no option for it (the design asks this to be confirmed: if it didn't, add a `render.slidevCli` option in Part A, test first, and pass it in Task 8's `Command`); the animated fixture export has 4 slides and one `.mp4`; each passes the exporter's `lintPackage` (run `node -e` with `import("<exporter>/test/lint.mjs")`).
 - [ ] **Step 3:** Check `<tmp-data>/nautilus/scripts/` and `kio/servicemenus/` hold the entries, executable. Ask the user to right-click a `.sptx` in GNOME Files with the real install (`make build-linux` then `stagepack install`), choose each entry, and watch the box; record what they report.
 - [ ] **Step 4:** Commit any fixes, each with its test first.
 
-### Task B11: Desktop PowerPoint (needs the user)
+### Task 16: Desktop PowerPoint (needs the user)
 
 - [ ] **Step 1:** Export the test presentation with `--animations` (the same deck the PowerPoint for the web check used) and hand it to the user with a checklist: open it in desktop PowerPoint on Windows, run the slide show from slide 1 with the right arrow only, and for each key press say whether it matches Slidev's next state; note any video that doesn't start by itself, any native shape missing, and what Left does.
 - [ ] **Step 2:** Each problem: a failing test in the exporter (Part A's branch) that pins the fix, the fix, `npm test && npm run test:render`, then the web check again on the user's upload.
-- [ ] **Step 3:** Record the results in the exporter's design doc and README ("Checked on"), and in Stagepack's README (Task B9).
+- [ ] **Step 3:** Record the results in the exporter's design doc and README ("Checked on"), and in Stagepack's README (Task 14).
 
-### Task B12: Pin the published exporter and open the PRs
+### Task 17: Pin the published exporter and open the PRs
 
 - [ ] **Step 1 (the user):** merge slidev-pptx-export PRs #3, #2, #4 and Part A's PR, and publish a new version to npm.
 - [ ] **Step 2:** `runtime/package.json`: `"slidev-pptx-export": "<published version>"`; remove `runtime/vendor/`; `npm install --package-lock-only`; `make build-linux build-windows`.
-- [ ] **Step 3:** Run `go test ./... && make licenses-go` and repeat Task B10 Step 2. Expected: PASS, same results.
+- [ ] **Step 3:** Run `go test ./... && make licenses-go` and repeat Task 15 Step 2. Expected: PASS, same results.
 - [ ] **Step 4:** Commit `Runtime: slidev-pptx-export <version>`; push `claude/export-pptx`; open the Stagepack PR. The body says what was checked (Linux end to end, GNOME right-click as the user reported it, desktop PowerPoint as the user reported it) and what wasn't (Stagepack on a real Windows machine, if still not done).
