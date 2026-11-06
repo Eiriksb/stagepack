@@ -365,9 +365,8 @@ it is in the file's version info and in the Settings → Apps entry. Builds with
    `build/ffmpeg-sources.tsv` (`tree=`), whichever way it comes: lame from SourceForge's snapshot zip of its
    revision (from svn only when SourceForge has dropped the snapshot, which **Download Snapshot** on that
    revision's page makes again; a snapshot that doesn't match stops the run), xvid from `svn`, as its server
-   offers no snapshot. **xvid's hash is not pinned yet**: until it is, `make sources` (and so `make release`)
-   stops at xvid. Run `make sources` once on a machine with svn, which prints the hash, and pin xvid's tree hash
-   in `build/ffmpeg-sources.tsv`. `make sources` also checks that the licence texts in those sources are the
+   offers no snapshot, so `make sources` needs `svn`. When a row's revision changes, `make sources` stops and
+   prints the hash of the files it fetched; check them and pin it as that row's `tree=`. `make sources` also checks that the licence texts in those sources are the
    ones in `build/ffmpeg-licenses.txt`, which ship with ffmpeg; when they differ it writes the new ones to
    `.cache/dl/ffmpeg-licenses.txt` to check and commit. A row of the table that changed is fetched again, and
    the archive is made again when the table or the licence texts changed (`build/release.sh` refuses one made

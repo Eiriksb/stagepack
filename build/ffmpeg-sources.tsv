@@ -140,6 +140,6 @@
 50-x264	git	https://code.videolan.org/videolan/x264.git	0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee	-	linux64,win64	COPYING
 50-x265	git	https://bitbucket.org/multicoreware/x265_git.git	b81f650e21e8aacbe6a9ad04ce14aefc05b932c0	-	linux64,win64	COPYING
 50-xavs2	git	https://github.com/pkuvcl/xavs2.git	eae1e8b9d12468059bdd7dee893508e470fa83d8	-	linux64,win64	COPYING
-50-xvid	svn	https://svn.xvid.org/trunk/xvidcore	2204	tree=unset	linux64,win64	LICENSE
+50-xvid	svn	https://svn.xvid.org/trunk/xvidcore	2204	tree=6c41fa9a6e3e70db64aae08e03e4f02a139d4175cd0c0cdc8447246de541329a	linux64,win64	LICENSE
 50-zimg	git	https://github.com/sekrit-twc/zimg.git	b3647572a01927e2aa8d0b7aaa917207c9c1ae5d	submodules	linux64,win64	COPYING,graphengine/COPYING
 50-zvbi	git	https://github.com/zapping-vbi/zvbi	41477c97c8edf7a01f1594b2a95b94f0117eed21	-	linux64,win64	COPYING.md
