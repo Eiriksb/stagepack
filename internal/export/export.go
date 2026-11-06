@@ -34,7 +34,9 @@ import (
 type Dialogs interface {
 	// Confirm asks a yes/no question, No the default; true is yes.
 	Confirm(title, msg string) bool
-	// AskSavePath asks where to save the .pptx, starting at suggest; false when cancelled.
+	// AskSavePath asks where to save the .pptx, starting at suggest, and
+	// returns a path the person agreed to write, having been asked about an
+	// existing file; false when cancelled or refused.
 	AskSavePath(suggest string) (string, bool)
 	Error(title, msg string)
 	ShowProgress(title, head string) ui.Progress
@@ -319,19 +321,30 @@ func lock(home, deckPath string) (unlock func(), err error) {
 	return nil, ErrBusy
 }
 
-// takeOver removes the lock at p if the export holding it no longer runs, and
-// reports whether it did. A lock without a PID is being written this moment,
-// unless it is old: then its export was killed right after making it.
+// staleLock is the age at which a lock counts as left behind even though a
+// process with its PID runs: that PID has been reused.
+const staleLock = 6 * time.Hour
+
+// takeOver removes the lock at p if it was left behind, and reports whether
+// it did: its PID no longer runs, or it is older than staleLock. A lock
+// without a PID is being written this moment, unless it is older than 10 s:
+// then its export was killed right after making it.
 func takeOver(p string) bool {
+	fi, err := os.Stat(p)
+	if err != nil {
+		return errors.Is(err, os.ErrNotExist)
+	}
 	data, err := os.ReadFile(p)
 	if err != nil {
 		return errors.Is(err, os.ErrNotExist)
 	}
-	if pid, err := strconv.Atoi(string(data)); err == nil {
-		if pid > 0 && pidRunning(pid) {
-			return false
-		}
-	} else if fi, err := os.Stat(p); err == nil && time.Since(fi.ModTime()) < 10*time.Second {
+	age := time.Since(fi.ModTime())
+	pid, perr := strconv.Atoi(string(data))
+	switch {
+	case age > staleLock:
+	case perr != nil && age < 10*time.Second:
+		return false
+	case perr == nil && pid > 0 && pidRunning(pid):
 		return false
 	}
 	// Moved aside first: of two exports taking over at once, the one that
@@ -340,7 +353,8 @@ func takeOver(p string) bool {
 	if os.Rename(p, aside) != nil {
 		return false
 	}
-	if now, _ := os.ReadFile(aside); !bytes.Equal(now, data) {
+	now, _ := os.ReadFile(aside)
+	if afi, err := os.Stat(aside); err != nil || !afi.ModTime().Equal(fi.ModTime()) || !bytes.Equal(now, data) {
 		os.Rename(aside, p)
 		return false
 	}
@@ -377,7 +391,11 @@ func output(d Dialogs, deckPath string, animations, replace bool) (string, error
 		return "", ErrCancelled
 	}
 	if !strings.EqualFold(filepath.Ext(p), ".pptx") {
+		// The person agreed to the name without .pptx: ask about the one with it.
 		p += ".pptx"
+		if _, err := os.Stat(p); err == nil && !replace && !d.Confirm(brand.Name, "Replace "+filepath.Base(p)+"?") {
+			return "", ErrCancelled
+		}
 	}
 	p, err := filepath.Abs(p)
 	if err == nil && !writable(filepath.Dir(p)) {
@@ -501,13 +519,19 @@ func (platformDialogs) Finished(title, msg string, buttons []string) int {
 
 // HeadlessDialogs writes one JSON line per dialog to w, for tests and scripts:
 // {"event":"confirm",…,"answer":"no"} (nobody can say yes), {"event":"save",
-// "path":…} (the suggestion is taken), {"event":"error",…}, the progress
+// "path":…} (the suggestion is taken; with "answer":"no" it is refused, being
+// an existing file and replace not set), {"event":"error",…}, the progress
 // lines of ui.NewHeadlessProgress and the finished line of ui.HeadlessFinished.
-func HeadlessDialogs(w io.Writer) Dialogs { return &headlessDialogs{w: w} }
+// replace is the person's agreement, given beforehand (--yes), to replace a
+// file AskSavePath suggests.
+func HeadlessDialogs(w io.Writer, replace bool) Dialogs {
+	return &headlessDialogs{w: w, replace: replace}
+}
 
 type headlessDialogs struct {
-	mu sync.Mutex
-	w  io.Writer
+	mu      sync.Mutex
+	w       io.Writer
+	replace bool
 }
 
 // Write writes p to w whole, so lines from the box and the dialogs never mix.
@@ -536,6 +560,10 @@ func (h *headlessDialogs) Confirm(title, msg string) bool {
 }
 
 func (h *headlessDialogs) AskSavePath(suggest string) (string, bool) {
+	if _, err := os.Stat(suggest); err == nil && !h.replace {
+		h.emit("save", "", "", suggest, "no")
+		return "", false
+	}
 	h.emit("save", "", "", suggest, "")
 	return suggest, true
 }

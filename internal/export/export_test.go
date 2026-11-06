@@ -125,7 +125,7 @@ type script struct {
 
 func newScript() *script {
 	out := &syncBuffer{}
-	return &script{Dialogs: HeadlessDialogs(out), out: out, button: -1}
+	return &script{Dialogs: HeadlessDialogs(out, false), out: out, button: -1}
 }
 
 func (s *script) event(e string) {
@@ -565,6 +565,17 @@ func TestExportAsksWhereWhenTheFolderCantBeWritten(t *testing.T) {
 	if ents, _ := os.ReadDir(h.dir); len(ents) != 1 {
 		t.Errorf("the read-only folder holds %v", ents)
 	}
+
+	// The name chosen without .pptx: the file with it is asked about.
+	if _, err := Export(context.Background(), h.options(false)); !errors.Is(err, ErrCancelled) {
+		t.Errorf("err = %v, want ErrCancelled", err)
+	}
+	if n := len(h.d.questions); n != 1 || h.d.questions[0] != "Replace mine.pptx?" {
+		t.Errorf("questions %q", h.d.questions)
+	}
+	if h.run.calls() != 1 {
+		t.Errorf("Run called %d times", h.run.calls())
+	}
 }
 
 func TestExportAsksTheCodeQuestionOnce(t *testing.T) {
@@ -913,12 +924,23 @@ func TestExportPathWithSpacesAndQuotes(t *testing.T) {
 
 func TestHeadlessDialogs(t *testing.T) {
 	var buf syncBuffer
-	d := HeadlessDialogs(&buf)
+	d := HeadlessDialogs(&buf, false)
 	if d.Confirm("Stagepack", "Replace talk.pptx?") {
 		t.Error("headless Confirm said yes")
 	}
-	if p, ok := d.AskSavePath("/home/x/talk.pptx"); p != "/home/x/talk.pptx" || !ok {
-		t.Errorf("AskSavePath = %q, %v", p, ok)
+	free := filepath.Join(t.TempDir(), "talk.pptx")
+	if p, ok := d.AskSavePath(free); p != free || !ok {
+		t.Errorf("AskSavePath(a new file) = %q, %v", p, ok)
+	}
+	taken := filepath.Join(t.TempDir(), "taken.pptx")
+	if err := os.WriteFile(taken, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if p, ok := d.AskSavePath(taken); ok {
+		t.Errorf("AskSavePath(an existing file) = %q, %v; nobody agreed to replace it", p, ok)
+	}
+	if p, ok := HeadlessDialogs(io.Discard, true).AskSavePath(taken); p != taken || !ok {
+		t.Errorf("AskSavePath(an existing file) when made to replace = %q, %v", p, ok)
 	}
 	d.Error("Stagepack", "Couldn't export talk.sptx: no.")
 	box := d.ShowProgress("Stagepack", "talk.sptx, editable")
@@ -934,7 +956,8 @@ func TestHeadlessDialogs(t *testing.T) {
 	}
 	want := []string{
 		"confirm|Stagepack|Replace talk.pptx?|||no",
-		"save|||/home/x/talk.pptx||",
+		"save|||" + free + "||",
+		"save|||" + taken + "||no",
 		"error|Stagepack|Couldn't export talk.sptx: no.|||",
 		"progress||||Unpacking|",
 		"finished|Exported talk.pptx|2 slides|||",
@@ -942,4 +965,98 @@ func TestHeadlessDialogs(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Errorf("lines\n%q\nwant\n%q", got, want)
 	}
+}
+
+func TestExportHeadlessDoesNotReplaceAFileNobodyAgreedTo(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a folder's mode doesn't stop writing on Windows")
+	}
+	h := newHarness(t, finishes(0))
+	if err := os.Chmod(h.dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(h.dir, 0o755) })
+	if f, err := os.CreateTemp(h.dir, "probe"); err == nil {
+		f.Close()
+		os.Remove(f.Name())
+		t.Skip("this user can write into a read-only folder (root)")
+	}
+	userHome := t.TempDir()
+	t.Setenv("HOME", userHome)
+	there := filepath.Join(userHome, "talk.pptx")
+	if err := os.WriteFile(there, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	o := h.options(false)
+	o.Dialogs = HeadlessDialogs(io.Discard, false)
+	if _, err := Export(context.Background(), o); !errors.Is(err, ErrCancelled) {
+		t.Errorf("err = %v, want ErrCancelled", err)
+	}
+	if got := readFile(t, there); got != "old" {
+		t.Errorf("%s holds %q; nobody agreed to replace it", there, got)
+	}
+	if h.run.calls() != 0 {
+		t.Errorf("Run called %d times", h.run.calls())
+	}
+	h.checkCleanedUp(t)
+
+	// Made to replace (as with --yes), it does.
+	o.Dialogs, o.Replace = HeadlessDialogs(io.Discard, true), true
+	if _, err := Export(context.Background(), o); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, there); got != "pptx" {
+		t.Errorf("%s holds %q after an export made to replace", there, got)
+	}
+}
+
+func TestExportFailureOnlyOnStderrSaysTheFileMayBeOpenInPowerPoint(t *testing.T) {
+	h := newHarness(t, nil)
+	t.Setenv(fakeEnv, "stderr")
+	t.Setenv(fakeStderrEnv, "Error: EBUSY: resource busy or locked, rename 'talk.pptx.partial' -> 'talk.pptx'")
+	o := h.options(false)
+	o.Run = func(ctx context.Context, cmd *exec.Cmd, out string, onEvent func(Event)) error {
+		cmd.Path = os.Args[0] // the test binary as the exporter, with the session's own stderr
+		return Run(ctx, cmd, out, onEvent)
+	}
+	if _, err := Export(context.Background(), o); err == nil {
+		t.Fatal("no error")
+	}
+	want := "Couldn't export talk" + brand.Ext + ": talk.pptx may be open in PowerPoint; close it and try again."
+	if !slices.Equal(h.d.errs, []string{want}) {
+		t.Errorf("errors %q, want %q", h.d.errs, want)
+	}
+	logFile := filepath.Join(h.home, "logs", "export-"+instance.Key(h.deck)+".log")
+	if got := readFile(t, logFile); !strings.Contains(got, "EBUSY") {
+		t.Errorf("the log lacks the exporter's stderr:\n%s", got)
+	}
+	h.checkNothingLeft(t, filepath.Join(h.dir, "talk.pptx"))
+}
+
+func TestExportTakesOverALockOlderThanSixHours(t *testing.T) {
+	h := newHarness(t, finishes(0))
+	if err := os.MkdirAll(filepath.Join(h.home, "instances"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A running PID (this one) in a fresh lock: busy.
+	lock := h.lockPath(h.deck)
+	if err := os.WriteFile(lock, []byte(strconv.Itoa(os.Getpid())), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Export(context.Background(), h.options(false)); !errors.Is(err, ErrBusy) {
+		t.Errorf("fresh lock: err = %v, want ErrBusy", err)
+	}
+	// The same PID in a lock 7 hours old: a reused PID, taken over.
+	old := time.Now().Add(-7 * time.Hour)
+	if err := os.Chtimes(lock, old, old); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Export(context.Background(), h.options(false)); err != nil {
+		t.Errorf("a 7-hour-old lock was not taken over: %v", err)
+	}
+	if h.run.calls() != 1 {
+		t.Errorf("Run called %d times, want 1", h.run.calls())
+	}
+	h.checkCleanedUp(t)
 }

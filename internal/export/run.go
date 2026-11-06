@@ -98,11 +98,21 @@ func (t *tail) String() string {
 	return strings.TrimSpace(string(bytes.ToValidUTF8(t.buf, nil)))
 }
 
+// quiet ignores w's write errors: a full disk under the log must not stop
+// stderr being read, which would leave the exporter stuck on a full pipe.
+type quiet struct{ w io.Writer }
+
+func (q quiet) Write(p []byte) (int, error) {
+	q.w.Write(p)
+	return len(p), nil
+}
+
 // Run starts cmd in its own process group (job object on Windows) and calls
 // onEvent for each JSON line on its stdout. If ctx ends first, the group is
 // stopped and context.Canceled (or ctx's error) is returned. A failing exit
-// returns an error carrying the exporter's error message. out+".partial" is
-// removed unless the exporter exited cleanly.
+// returns an error carrying the exporter's error message, or else the end of
+// its stderr, which still reaches cmd.Stderr if that is set. out+".partial"
+// is removed unless the exporter exited cleanly.
 func Run(ctx context.Context, cmd *exec.Cmd, out string, onEvent func(Event)) (err error) {
 	clean := false
 	defer func() {
@@ -117,6 +127,8 @@ func Run(ctx context.Context, cmd *exec.Cmd, out string, onEvent func(Event)) (e
 	var errTail tail
 	if cmd.Stderr == nil {
 		cmd.Stderr = &errTail
+	} else {
+		cmd.Stderr = io.MultiWriter(&errTail, quiet{cmd.Stderr})
 	}
 	prepare(cmd)
 	if err := cmd.Start(); err != nil {

@@ -2,6 +2,7 @@ package export
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -21,6 +22,9 @@ import (
 // The test binary doubles as a fake exporter: Command runs it as "Node", and
 // FAKE_EXPORT_MODE says how it behaves. os.Args is [binary, cli, slides, out, ...].
 const fakeEnv = "FAKE_EXPORT_MODE"
+
+// fakeStderrEnv is what the "stderr" mode writes to stderr.
+const fakeStderrEnv = "FAKE_EXPORT_STDERR"
 
 func TestMain(m *testing.M) {
 	if mode := os.Getenv(fakeEnv); mode != "" {
@@ -64,6 +68,10 @@ func fake(mode string) {
 		w.Flush()
 	case "sleep":
 		time.Sleep(time.Minute)
+	case "stderr": // a crash: a message on stderr alone, no error event
+		println3(`{"event":"start","slides":2}`)
+		os.Stderr.WriteString(os.Getenv(fakeStderrEnv) + "\n")
+		os.Exit(1)
 	}
 }
 
@@ -144,6 +152,20 @@ func TestRunFailureCarriesTheErrorMessage(t *testing.T) {
 	}
 	if _, serr := os.Stat(out + ".partial"); serr == nil {
 		t.Error(".partial left behind")
+	}
+}
+
+func TestRunFailureWithoutAnErrorEventCarriesStderr(t *testing.T) {
+	cmd, out := fakeCmd(t, "stderr")
+	cmd.Env = append(cmd.Env, fakeStderrEnv+"=node: something broke badly")
+	var log bytes.Buffer
+	cmd.Stderr = &log // as the export session sets it, to its log file
+	err := Run(context.Background(), cmd, out, func(Event) {})
+	if err == nil || !strings.Contains(err.Error(), "something broke badly") {
+		t.Errorf("err = %v, want the exporter's stderr in it", err)
+	}
+	if !strings.Contains(log.String(), "something broke badly") {
+		t.Errorf("the given stderr got %q", log.String())
 	}
 }
 
