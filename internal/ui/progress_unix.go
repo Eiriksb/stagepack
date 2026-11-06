@@ -196,6 +196,9 @@ func (p *zenityProgress) Close() {
 // asked whether it was cancelled.
 var kdialogPoll = 300 * time.Millisecond
 
+// kdialogExitWait is how long a box that can't be reached is given to end.
+var kdialogExitWait = time.Second
+
 // kdialogIface is the D-Bus interface of kdialog's progress box.
 const kdialogIface = "org.kde.kdialog.ProgressDialog"
 
@@ -335,8 +338,11 @@ func (p *kdialogProgress) loop() {
 		if err == nil {
 			cancelled, err = p.box.wasCancelled()
 		}
+		if err != nil && p.boxEnded() {
+			cancelled, err = true, nil // Cancel, Escape or the close button end the box
+		}
 		if err != nil {
-			log.Printf("kdialog's progress box is gone (%v); the work goes on without it", err)
+			log.Printf("kdialog's progress box can't be reached (%v); the work goes on without it", err)
 			return
 		}
 		if cancelled {
@@ -346,6 +352,30 @@ func (p *kdialogProgress) loop() {
 			}
 			p.mu.Unlock()
 			return
+		}
+	}
+}
+
+// boxEnded reports whether kdialog's progress box has ended, giving it
+// kdialogExitWait to. The helper that shows it ends when Cancel, Escape or
+// the close button hides it, and its D-Bus name, which holds its process
+// number, goes with it.
+func (p *kdialogProgress) boxEnded() bool {
+	pid, err := strconv.Atoi(strings.TrimPrefix(p.box.service, "org.kde.kdialog-"))
+	if err != nil || pid <= 0 { // kill(0) and kill(-1) would ask about other processes
+		return false
+	}
+	deadline := time.After(kdialogExitWait)
+	for {
+		if errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) {
+			return true
+		}
+		select {
+		case <-p.stop: // Close: not a cancel, whatever it is
+			return false
+		case <-deadline:
+			return false
+		case <-time.After(50 * time.Millisecond):
 		}
 	}
 }

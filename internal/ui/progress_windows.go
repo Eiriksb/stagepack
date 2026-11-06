@@ -2,8 +2,9 @@ package ui
 
 // The progress box and the finished box on Windows: Task Dialogs
 // (TaskDialogIndirect), which only comctl32.dll version 6 has; the program's
-// manifest asks for it (build/mkwinres). Without it (go test, go run), the
-// steps go to the log and the finished box is a message box.
+// manifest asks for it (build/mkwinres). Without it (go test, go run), or when
+// a Task Dialog fails, the progress box is Busy's message box, which has no
+// Cancel, and the finished box a message box with OK.
 
 import (
 	"encoding/binary"
@@ -53,6 +54,35 @@ const (
 	// one line: TDM_UPDATE_ELEMENT_TEXT doesn't make the box any bigger.
 	progressWidth = 280
 )
+
+var noTaskDialogs sync.Once
+
+// taskDialogsMissing reports whether TaskDialogIndirect can't be had, which is
+// logged once.
+func taskDialogsMissing() bool {
+	err := procTaskDialogIndirect.Find()
+	if err != nil {
+		noTaskDialogs.Do(func() {
+			log.Printf("no Task Dialogs, as comctl32.dll version 6 is not loaded (%v): "+
+				"progress is shown in a message box without Cancel", err)
+		})
+	}
+	return err != nil
+}
+
+// busyProgress is the progress box without Task Dialogs: Busy's message box,
+// which has no Cancel, with the steps going to the log.
+type busyProgress struct {
+	*loggedProgress
+	done func()
+	once sync.Once
+}
+
+func newBusyProgress(title, head string) *busyProgress {
+	return &busyProgress{loggedProgress: newLoggedProgress(title), done: Busy(title, head)}
+}
+
+func (b *busyProgress) Close() { b.once.Do(b.done) }
 
 // taskDialogConfig is what runTaskDialog shows.
 type taskDialogConfig struct {
@@ -187,8 +217,10 @@ type taskProgress struct {
 	hwnd    uintptr // while the box is up
 	step    string
 	pct     int
-	dirty   bool // an Update not shown yet
-	closing bool // set by Close: a button click is then done, not a cancel
+	dirty   bool   // an Update not shown yet
+	closing bool   // set by Close: a button click is then done, not a cancel
+	created bool   // the box came up
+	busy    func() // closes Busy's box, shown when the Task Dialog failed
 
 	cancelled chan struct{}
 	ended     chan struct{} // closed once the box is gone
@@ -198,9 +230,8 @@ type taskProgress struct {
 // ShowProgress opens a progress box called title, with head as its main line
 // and a Cancel button, and returns without waiting.
 func ShowProgress(title, head string) Progress {
-	if err := procTaskDialogIndirect.Find(); err != nil {
-		log.Printf("no progress box, as comctl32.dll version 6 is not loaded: %v", err)
-		return newLoggedProgress(title)
+	if taskDialogsMissing() {
+		return newBusyProgress(title, head)
 	}
 	p := &taskProgress{cancelled: make(chan struct{}), ended: make(chan struct{})}
 	go func() {
@@ -215,8 +246,18 @@ func ShowProgress(title, head string) Progress {
 			content:         " ", // TDM_UPDATE_ELEMENT_TEXT changes only text that is there
 			width:           progressWidth,
 		}, p.notify)
-		if err != nil {
-			log.Printf("progress box: %v", err)
+		if err == nil {
+			return
+		}
+		log.Printf("progress box: %v", err)
+		p.mu.Lock()
+		fallback := !p.created && !p.closing
+		p.mu.Unlock()
+		if fallback {
+			done := Busy(title, head) // on a thread of its own
+			p.mu.Lock()
+			p.busy = done // before ended, which Close waits for
+			p.mu.Unlock()
 		}
 	}()
 	return p
@@ -227,7 +268,7 @@ func (p *taskProgress) notify(hwnd uintptr, msg uint32, _ uintptr) uintptr {
 	case tdnCreated:
 		procSetForegroundWindow.Call(hwnd)
 		p.mu.Lock()
-		p.hwnd = hwnd
+		p.hwnd, p.created = hwnd, true
 		closing := p.closing
 		p.mu.Unlock()
 		if closing { // Close came before the box was up
@@ -299,15 +340,22 @@ func (p *taskProgress) Close() {
 		case <-time.After(5 * time.Second):
 			log.Printf("the progress box did not close")
 		}
+		p.mu.Lock()
+		busy := p.busy
+		p.mu.Unlock()
+		if busy != nil {
+			busy()
+		}
 	})
 }
 
 // Finished shows msg under title with one button per label, waits until one is
-// pressed and returns its index; -1 when the box is closed.
+// pressed and returns its index; -1 when the box is closed. Without Task
+// Dialogs it is a message box with OK, which counts as Close.
 func Finished(title, msg string, buttons []string) int {
-	if err := procTaskDialogIndirect.Find(); err != nil {
+	if taskDialogsMissing() {
 		infoBox(title, msg)
-		return -1
+		return plainFinishedAnswer(buttons)
 	}
 	runtime.LockOSThread() // the box, and its callback, belong to this thread
 	defer runtime.UnlockOSThread()
@@ -327,7 +375,7 @@ func Finished(title, msg string, buttons []string) int {
 	if err != nil {
 		log.Printf("finished box: %v", err)
 		infoBox(title, msg)
-		return -1
+		return plainFinishedAnswer(buttons)
 	}
 	if i := int(b) - firstButtonID; i >= 0 && i < len(buttons) {
 		return i

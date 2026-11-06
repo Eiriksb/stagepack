@@ -4,8 +4,10 @@ package ui
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -261,6 +263,47 @@ case "$*" in *wasCancelled*) echo '(false,)';; esac`
 	}
 	if fired(p.Cancelled(), 30*time.Millisecond) {
 		t.Error("(false,) counted as Cancel")
+	}
+}
+
+func TestKdialogBoxGoneMeansCancelled(t *testing.T) {
+	oldPoll, oldWait := kdialogPoll, kdialogExitWait
+	kdialogPoll, kdialogExitWait = 10*time.Millisecond, 50*time.Millisecond
+	t.Cleanup(func() { kdialogPoll, kdialogExitWait = oldPoll, oldWait })
+
+	// A process number that no longer runs: a shell that has ended.
+	sh := exec.Command("/bin/sh", "-c", "exit 0")
+	if err := sh.Run(); err != nil {
+		t.Fatal(err)
+	}
+	// kdialog's helper ends when Cancel, Escape or the close button hides its
+	// box, and its D-Bus name goes with it: once $DIR/cancel exists every call
+	// fails, as qdbus does for a name that isn't there.
+	const qdbus = `if [ -e "$DIR/cancel" ]; then echo "Service '$1' does not exist." >&2; exit 2; fi
+(IFS='|'; printf '%s\n' "$*") >> "$DIR/calls"
+if [ "$3" = wasCancelled ]; then echo false; fi`
+	for _, c := range []struct {
+		name      string
+		pid       int
+		cancelled bool
+	}{
+		{"the helper has ended", sh.Process.Pid, true},
+		// It runs but can't be reached: the work goes on without the box.
+		{"the helper still runs", os.Getpid(), false},
+	} {
+		kdialog := script("kdialog", "printf 'org.kde.kdialog-"+strconv.Itoa(c.pid)+" /ProgressDialog\\n'")
+		dir := fakeBin(t, map[string]string{"kdialog": kdialog, "qdbus": qdbus})
+		p := ShowProgress("Stagepack", "talk.sptx, editable")
+		waitFor(t, "a cancel check", func() bool { return strings.Contains(read(dir, "calls"), "wasCancelled") })
+		os.WriteFile(filepath.Join(dir, "cancel"), nil, 0o644)
+		wait := 5 * time.Second
+		if !c.cancelled {
+			wait = 300 * time.Millisecond
+		}
+		if got := fired(p.Cancelled(), wait); got != c.cancelled {
+			t.Errorf("%s: Cancelled fired %v, want %v", c.name, got, c.cancelled)
+		}
+		p.Close()
 	}
 }
 

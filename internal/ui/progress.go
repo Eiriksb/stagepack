@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"math"
+	"slices"
 	"sync"
 )
 
@@ -84,6 +85,11 @@ func HeadlessFinished(w io.Writer, title, msg string, buttons []string) int {
 	}
 	return -1
 }
+
+// plainFinishedAnswer is what Finished returns when the finished box could
+// only be a message with OK: the index of the Close button, as OK closes it;
+// -1 without one.
+func plainFinishedAnswer(buttons []string) int { return slices.Index(buttons, "Close") }
 
 // loggedProgress stands in for a box where none can be shown: each new step
 // goes to the log, and nobody can cancel.

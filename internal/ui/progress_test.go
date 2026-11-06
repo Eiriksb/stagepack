@@ -43,3 +43,20 @@ func TestPercent(t *testing.T) {
 		t.Errorf("percent(NaN) = %d", got)
 	}
 }
+
+func TestPlainFinishedAnswer(t *testing.T) {
+	// A box with only OK, where a finished box can't be shown: OK is Close.
+	for _, c := range []struct {
+		buttons []string
+		want    int
+	}{
+		{[]string{"Open", "Show in folder", "Close"}, 2},
+		{[]string{"Close", "Open"}, 0},
+		{[]string{"Open"}, -1},
+		{nil, -1},
+	} {
+		if got := plainFinishedAnswer(c.buttons); got != c.want {
+			t.Errorf("plainFinishedAnswer(%q) = %d, want %d", c.buttons, got, c.want)
+		}
+	}
+}
