@@ -403,7 +403,7 @@ const (
 )
 
 // ownedEntries are the names in home that Install and the viewer create.
-var ownedEntries = []string{"node", "runtimes", "instances", "logs", "browser", trust.FileName}
+var ownedEntries = []string{"node", "runtimes", "ffmpeg", "instances", "logs", "browser", trust.FileName}
 
 // uninstall reports left when the running program (self) is in home and so
 // could not be deleted.

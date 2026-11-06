@@ -276,6 +276,7 @@ func TestUninstallKeepsJournal(t *testing.T) {
 	write(t, home, "journal/x.json", "notes")
 	write(t, home, "node/node.exe", "n")
 	write(t, home, "runtimes/53/package.json", "{}")
+	write(t, home, "ffmpeg/ffmpeg.exe", "f")
 	write(t, home, "logs/a.log", "l")
 	write(t, home, "instances/a.json", "{}")
 	write(t, home, trust.FileName, "{}")
@@ -287,7 +288,7 @@ func TestUninstallKeepsJournal(t *testing.T) {
 	if got := read(t, home, "journal/x.json"); got != "notes" {
 		t.Errorf("journal = %q", got)
 	}
-	for _, rel := range []string{"node", "runtimes", "logs", "instances", trust.FileName, ".install-old-1", ExeName(), markerName()} {
+	for _, rel := range []string{"node", "runtimes", "ffmpeg", "logs", "instances", trust.FileName, ".install-old-1", ExeName(), markerName()} {
 		if exists(home, rel) {
 			t.Errorf("%s survived the uninstall", rel)
 		}
@@ -548,6 +549,46 @@ func TestDirPayloadShowsOnlyTheRuntime(t *testing.T) {
 	}
 	if _, ok := dirPayload(t.TempDir(), home); ok {
 		t.Error("payload found in an empty folder")
+	}
+}
+
+// The ffmpeg/ beside the runtime (the PowerPoint export's) is part of the payload when the build has it; a
+// build without it still installs (TestDirPayloadShowsOnlyTheRuntime).
+func TestDirPayloadCarriesFFmpeg(t *testing.T) {
+	build := t.TempDir()
+	for _, rel := range []string{"node/bin/node", "runtimes/53/package.json", "ffmpeg/ffmpeg", "ffmpeg/LICENSE.txt",
+		"other/x", ExeName()} {
+		write(t, build, rel, "x")
+	}
+	home := filepath.Join(t.TempDir(), "home")
+	p, ok := dirPayload(build, home)
+	if !ok {
+		t.Fatal("no payload in a build folder with ffmpeg/")
+	}
+	var got []string
+	fs.WalkDir(p, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !d.IsDir() {
+			got = append(got, path)
+		}
+		return nil
+	})
+	want := []string{"ffmpeg/LICENSE.txt", "ffmpeg/ffmpeg", "node/bin/node", "runtimes/53/package.json"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("payload files = %q, want %q", got, want)
+	}
+	if err := installFiles(home, p); err != nil {
+		t.Fatal(err)
+	}
+	for _, rel := range []string{"ffmpeg/ffmpeg", "ffmpeg/LICENSE.txt", "node/bin/node"} {
+		if !exists(home, rel) {
+			t.Errorf("%s not installed", rel)
+		}
+	}
+	if exists(home, "other") {
+		t.Error("a folder that is not part of the runtime was installed")
 	}
 }
 
