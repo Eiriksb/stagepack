@@ -82,7 +82,7 @@ func TestDesktopEntry(t *testing.T) {
 	want := map[string]string{
 		"Type":     "Application",
 		"Name":     brand.Name,
-		"Exec":     `"/home/åse/.local/share/stagepack/stagepack" open %f`,
+		"Exec":     `/home/åse/.local/share/stagepack/stagepack open %f`,
 		"Icon":     brand.AppID,
 		"MimeType": brand.MIMEType + ";",
 		"Terminal": "false",
@@ -90,6 +90,27 @@ func TestDesktopEntry(t *testing.T) {
 	for key, v := range want {
 		if k[key] != v {
 			t.Errorf("%s=%q, want %q", key, k[key], v)
+		}
+	}
+}
+
+// A plain path is written as it is: xdg-utils (xdg-open's generic path, xdg-mime's default
+// lookup) take the first word of Exec without removing quotes. A path with a character the
+// Desktop Entry spec reserves, or a %, is quoted.
+func TestDesktopExecArgWritesAPlainPathUnquoted(t *testing.T) {
+	for _, in := range []string{
+		"/home/u/.local/share/stagepack/stagepack",
+		"/home/åse/.local/share/stagepack/stagepack",
+		"/opt/Stage-pack_2.0/bin+x/stagepack,1@host:8",
+	} {
+		if got, err := desktopExecArg(in); err != nil || got != in {
+			t.Errorf("desktopExecArg(%q) = %s, %v; want it unquoted", in, got, err)
+		}
+	}
+	for _, r := range " \"'\\><~|&;$*?#()`%" {
+		in := "/opt/a" + string(r) + "b/x"
+		if got, err := desktopExecArg(in); err != nil || !strings.HasPrefix(got, `"`) || !strings.HasSuffix(got, `"`) {
+			t.Errorf("desktopExecArg(%q) = %s, %v; want it quoted", in, got, err)
 		}
 	}
 }
@@ -225,8 +246,14 @@ func TestXDGRegisterAndRemove(t *testing.T) {
 	if got := read(t, f.data, mimeRel); got != mimePackage() {
 		t.Errorf("MIME package = %q", got)
 	}
-	if k := desktopKeys(t, read(t, f.data, desktopRel)); k["Exec"] != `"`+exe+`" open %f` {
+	if k := desktopKeys(t, read(t, f.data, desktopRel)); k["Exec"] != exe+" open %f" {
 		t.Errorf("Exec=%s", k["Exec"])
+	}
+	menu := read(t, f.data, "kio/servicemenus/"+brand.AppID+"-export.desktop")
+	for _, want := range []string{"\nExec=" + exe + " export-pptx %f\n", "\nExec=" + exe + " export-pptx --animations %f\n"} {
+		if !strings.Contains(menu, want) {
+			t.Errorf("service menu lacks %q:\n%s", want, menu)
+		}
 	}
 	want := []string{
 		"update-mime-database " + filepath.Join(f.data, "mime"),

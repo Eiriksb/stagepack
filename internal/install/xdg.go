@@ -101,13 +101,25 @@ func desktopEntry(exe string) (string, error) {
 		"Categories=Office;Presentation;\n", nil
 }
 
-// desktopExecArg quotes p as one argument of a desktop entry's Exec key: inside
-// double quotes, with " ` $ \ escaped by a backslash; then, as the value is a
-// string too, every backslash doubled; and % written as %%. A path with a line
-// break or another control character cannot be written there.
+// execReserved are the characters the Desktop Entry spec reserves in an Exec
+// argument (spaces and the control characters aside), and %, which is a field
+// code there.
+const execReserved = "\"'\\><~|&;$*?#()`%"
+
+// desktopExecArg writes p as one argument of a desktop entry's Exec key. A path
+// without a space or an execReserved character is written as it is: xdg-utils
+// (xdg-open's generic path, xdg-mime's default lookup) take the first word of
+// Exec without removing quotes, so a quoted program is not found there. Any
+// other path is quoted: inside double quotes, with " ` $ \ escaped by a
+// backslash; then, as the value is a string too, every backslash doubled; and %
+// written as %%. A path with a line break or another control character cannot
+// be written there.
 func desktopExecArg(p string) (string, error) {
 	if strings.ContainsFunc(p, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
 		return "", fmt.Errorf("the install folder holds a control character: %q", p)
+	}
+	if !strings.ContainsAny(p, " "+execReserved) {
+		return p, nil
 	}
 	var b strings.Builder
 	b.WriteByte('"')
@@ -207,8 +219,8 @@ func xdgFiles(exe string) ([]xdgFile, error) {
 // oldXDGFiles are files earlier installs wrote and this one does not: Install
 // and Uninstall remove them. The Open With entries of the exports went
 // because xdg-mime's default lookup, which xdg-open uses outside GNOME and KDE,
-// can't read the viewer's quoted Exec and falls back to the first entry with
-// the type, which was an export.
+// can't read a quoted Exec (the viewer's, when its path needs quotes) and falls
+// back to the first entry with the type, which was an export.
 var oldXDGFiles = []string{
 	"applications/" + brand.AppID + "-export.desktop",
 	"applications/" + brand.AppID + "-export-animations.desktop",
