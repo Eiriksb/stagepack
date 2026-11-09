@@ -2,6 +2,7 @@ package slidev
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -40,10 +41,15 @@ func fakePort() int {
 	return 0
 }
 
-// fake modes: serve, serve-then-exit, deaf (serves, ignores SIGTERM), exit-early, never-ready.
+// fake modes: serve, serve-then-exit, deaf (serves, ignores SIGTERM), exit-early, never-ready,
+// echo (prints its arguments and environment as one JSON line, then exits 3).
 func fake(mode string) {
 	fmt.Println("fake slidev:", mode)
 	switch mode {
+	case "echo":
+		line, _ := json.Marshal(map[string][]string{"args": os.Args[1:], "env": os.Environ()})
+		fmt.Println(string(line))
+		os.Exit(3)
 	case "exit-early":
 		fmt.Fprintln(os.Stderr, "boom from fake")
 		os.Exit(3)

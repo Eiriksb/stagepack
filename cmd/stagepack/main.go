@@ -24,7 +24,7 @@ import (
 
 var cmdName = strings.ToLower(brand.Name)
 
-var usage = "usage: " + cmdName + " {pack|open|export-pptx|install|uninstall|version} [args]"
+var usage = "usage: " + cmdName + " {pack|open|export-pptx|serve|install|uninstall|version} [args]"
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -59,6 +59,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runOpen(args[1:], stdout, stderr)
 	case "export-pptx":
 		return runExportPptx(args[1:], stdout, stderr)
+	case "serve":
+		return runServe(args[1:], stdout, stderr)
 	case "version", "--version":
 		fmt.Fprintln(stdout, version.Version)
 		return 0

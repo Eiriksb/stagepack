@@ -761,7 +761,7 @@ func writeExportLock(t *testing.T, home string, l instance.ExportLock) {
 func TestCleanStaleKeepsTheWorkFolderOfARunningExport(t *testing.T) {
 	s, dir := agedWorkFolder(t)
 	writeExportLock(t, s.home, instance.ExportLock{PID: os.Getpid(), WorkDir: dir})
-	if err := workspace.CleanStale(s.rtDir, s.inUse()); err != nil {
+	if err := workspace.CleanStale(s.rtDir, instance.InUse(s.home, time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(dir); err != nil {
@@ -776,7 +776,7 @@ func TestCleanStaleRemovesTheWorkFolderOfAnExportThatIsGone(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeExportLock(t, s.home, instance.ExportLock{PID: gone.Process.Pid, WorkDir: dir})
-	if err := workspace.CleanStale(s.rtDir, s.inUse()); err != nil {
+	if err := workspace.CleanStale(s.rtDir, instance.InUse(s.home, time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {

@@ -32,6 +32,10 @@ type Work struct {
 	// manifest and the slides file (which note edits change), and over Code.
 	// The same talk with only its notes edited keeps its Hash.
 	Hash string
+	// Sums maps each file entry's name to the hex SHA-256 of its content as
+	// Extract wrote it (SaveFolder updates it). A file whose sum is unchanged
+	// is copied raw into the deck on save. The manifest and folders are not in it.
+	Sums map[string]string
 }
 
 // HasCode reports whether opening the deck runs code it brought along.
@@ -111,22 +115,37 @@ func Extract(deckPath, runtimeDir string) (Work, error) {
 	if err != nil {
 		return Work{}, err
 	}
-	var sums []string // "<name> <sha256>" of the entries Hash covers
+	fileSums := map[string]string{}
 	for _, it := range items {
 		sum, err := write(dir, it)
 		if err != nil {
 			os.RemoveAll(dir)
 			return Work{}, err
 		}
-		if it.file.Name != m.Entry {
-			sums = append(sums, fmt.Sprintf("%q %x", it.file.Name, sum))
+		if sum != nil {
+			fileSums[it.file.Name] = hex.EncodeToString(sum)
 		}
 	}
+	w := Work{Dir: dir, Manifest: m, Entries: names, Sums: fileSums}
+	w.Rescan()
+	return w, nil
+}
+
+// Rescan sets Code from the work folder's files (deck.CodeReasons over Entries) and Hash from
+// Entries and Sums, as Extract does: after SaveFolder, they are those of the saved deck. What
+// AddCode added is dropped; add it again.
+func (w *Work) Rescan() {
 	read := func(name string) []byte {
-		data, _ := os.ReadFile(filepath.Join(dir, filepath.FromSlash(deck.ExtractedPath(name))))
+		data, _ := os.ReadFile(filepath.Join(w.Dir, filepath.FromSlash(deck.ExtractedPath(name))))
 		return data
 	}
-	w := Work{Dir: dir, Manifest: m, Entries: names, Code: deck.CodeReasons(names, read)}
+	w.Code = deck.CodeReasons(w.Entries, read)
+	var sums []string // "<name> <sha256>" of the entries Hash covers; a folder has no sum
+	for _, name := range w.Entries {
+		if name != w.Manifest.Entry {
+			sums = append(sums, fmt.Sprintf("%q %s", name, w.Sums[name]))
+		}
+	}
 	sort.Strings(sums)
 	h := sha256.New()
 	for _, l := range sums {
@@ -136,7 +155,6 @@ func Extract(deckPath, runtimeDir string) (Work, error) {
 		fmt.Fprintf(h, "code %q\n", r)
 	}
 	w.Hash = hex.EncodeToString(h.Sum(nil))
-	return w, nil
 }
 
 // plan validates every entry before anything is written, using the same

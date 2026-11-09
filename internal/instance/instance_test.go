@@ -573,3 +573,29 @@ func TestInstanceRenew(t *testing.T) {
 	}
 	hB.Release()
 }
+
+func TestHolder(t *testing.T) {
+	home := t.TempDir()
+	deck := filepath.Join(t.TempDir(), "a"+".sptx")
+	_, mine, err := Claim(home, deck, func(Record) bool { return false })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := mine.Holder(); r != nil {
+		t.Errorf("Holder = %+v while the record is ours, want nil", r)
+	}
+	_, theirs, err := Claim(home, deck, func(Record) bool { return false })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := theirs.Update(1234, "http://127.0.0.1:1234", "/w"); err != nil {
+		t.Fatal(err)
+	}
+	if r := mine.Holder(); r == nil || r.BaseURL != "http://127.0.0.1:1234" {
+		t.Errorf("Holder = %+v, want the record that took over", r)
+	}
+	theirs.Release()
+	if r := mine.Holder(); r != nil {
+		t.Errorf("Holder = %+v with no record there, want nil", r)
+	}
+}

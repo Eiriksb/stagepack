@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,6 +28,8 @@ type Config struct {
 	Entry        string        // slides file in WorkDir, normally slides.md
 	LogPath      string        // Slidev's stdout and stderr go here (required)
 	ReadyTimeout time.Duration // default 120 s: Vite's first dependency optimisation is slow
+	NodeArgs     []string      // node options before the CLI, such as AddonLaunch's --import
+	Env          []string      // KEY=value pairs added to the child's environment last, so they win
 }
 
 const (
@@ -39,11 +42,13 @@ const (
 // A variable so tests can shorten it.
 var stopGrace = 5 * time.Second
 
-// Args returns the arguments after the node executable. Slidev is never given
-// --remote, so it binds localhost only. The entry goes as "./<entry>", so it
-// can never be read as an option.
+// Args returns the arguments after the node executable: NodeArgs, then the CLI
+// and its options. Slidev is never given --remote, so it binds localhost only.
+// The entry goes as "./<entry>", so it can never be read as an option, and it
+// is always the CLI's first argument, where the addons preload looks for it.
 func Args(c Config, port int) []string {
-	return []string{c.CLI, "./" + c.Entry, "--port", strconv.Itoa(port), "--open", "false", "--log", "warn"}
+	args := slices.Clone(c.NodeArgs)
+	return append(args, c.CLI, "./"+c.Entry, "--port", strconv.Itoa(port), "--open", "false", "--log", "warn")
 }
 
 // FreePort returns a port on the loopback interface that was free a moment ago.
@@ -112,7 +117,7 @@ func Start(ctx context.Context, c Config, port int) (*Server, error) {
 	}
 	cmd := exec.Command(c.Node, Args(c, port)...)
 	cmd.Dir = c.WorkDir
-	cmd.Env = childEnv(os.Environ())
+	cmd.Env = childEnv(os.Environ(), c.Env...)
 	cmd.Stdout, cmd.Stderr = logf, logf
 	prepare(cmd)
 	if err := cmd.Start(); err != nil {
@@ -156,10 +161,11 @@ const ipv4First = "--dns-result-order=ipv4first"
 // childEnv is base plus BROWSER=none, brand.ViewerEnv=1 (the export addon then stays out of
 // the way) and NODE_OPTIONS with --dns-result-order=ipv4first added to any existing value.
 // That makes Node resolve "localhost" to 127.0.0.1 first on every OS, so Slidev's
-// "localhost" bind is IPv4 and 127.0.0.1 URLs always work.
-func childEnv(base []string) []string {
+// "localhost" bind is IPv4 and 127.0.0.1 URLs always work. Then come extra (Config.Env);
+// exec keeps the last value of a repeated name, so they override everything before them.
+func childEnv(base []string, extra ...string) []string {
 	const key = "NODE_OPTIONS="
-	env := make([]string, 0, len(base)+2)
+	env := make([]string, 0, len(base)+3+len(extra))
 	opts := ""
 	for _, kv := range base {
 		switch {
@@ -174,7 +180,8 @@ func childEnv(base []string) []string {
 	if !strings.Contains(opts, ipv4First) {
 		opts = strings.TrimSpace(opts + " " + ipv4First)
 	}
-	return append(env, "BROWSER=none", brand.ViewerEnv+"=1", key+opts)
+	env = append(env, "BROWSER=none", brand.ViewerEnv+"=1", key+opts)
+	return append(env, extra...)
 }
 
 // probes are tried in turn each round. Slidev binds "localhost", which may be

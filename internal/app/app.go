@@ -75,8 +75,6 @@ var startSlidev = func(ctx context.Context, c slidev.Config, port int) (server, 
 }
 
 const (
-	// staleAge: a work folder younger than this may belong to an instance still starting.
-	staleAge        = 10 * time.Minute
 	throwawayDetail = "This is a temporary copy; notes you edit won't be kept. Use Save a copy…"
 	failedDetail    = "Couldn't save into the file (it may be read-only, or the USB stick was removed). Your notes are kept; use Save a copy…"
 )
@@ -176,7 +174,7 @@ func Open(ctx context.Context, o Options) error {
 	defer func() { s.opened() }() // any return before the UI runs
 
 	// 1. Work folders left by a crash.
-	if err := workspace.CleanStale(s.rtDir, s.inUse()); err != nil {
+	if err := workspace.CleanStale(s.rtDir, instance.InUse(home, time.Now())); err != nil {
 		log.Printf("clean old work folders: %v", err)
 	}
 	// 2. One instance per deck: a second launch shows the running one.
@@ -290,12 +288,13 @@ type CodeCheck struct {
 	ReadHeadmatter func(ctx context.Context, node, runtimeDir, slidesPath string) (slidev.Headmatter, error)
 }
 
-// Allow adds to w the theme and addons its headmatter names that count as
+// Assess adds to w the theme and addons its headmatter names that count as
 // code, as Slidev's own parser reads them (a headmatter that can't be read
-// counts as code), and reports whether w's code may run: it brings none,
-// TrustCode is set, the trusted list has this version of it, or Ask says yes
-// to CodeQuestion, which adds it to the list. deckPath is the talk's file.
-func (c CodeCheck) Allow(ctx context.Context, w *workspace.Work, deckPath string) bool {
+// counts as code), and reports w's reasons (w.Code; none when it brings no
+// code) and whether it is trusted: it brings no code, or the trusted list has
+// this version of it. It never asks, and TrustCode doesn't change what it
+// reports. deckPath is the talk's file.
+func (c CodeCheck) Assess(ctx context.Context, w *workspace.Work, deckPath string) (reasons []string, trusted bool) {
 	read := c.ReadHeadmatter
 	if read == nil {
 		read = readHeadmatter
@@ -306,20 +305,27 @@ func (c CodeCheck) Allow(ctx context.Context, w *workspace.Work, deckPath string
 	} else {
 		w.AddCode(deck.HeadmatterReasons(hm.Theme, hm.Addons, hm.PWA)...)
 	}
-	if !w.HasCode() || c.TrustCode {
+	if !w.HasCode() {
+		return nil, true
+	}
+	return w.Code, trust.Store{Path: filepath.Join(c.Home, trust.FileName)}.Trusted(w.Manifest.ID, w.Hash)
+}
+
+// Allow assesses w (Assess) and reports whether its code may run: it is
+// trusted, TrustCode is set, or Ask says yes to CodeQuestion, which adds this
+// version to the trusted list. deckPath is the talk's file.
+func (c CodeCheck) Allow(ctx context.Context, w *workspace.Work, deckPath string) bool {
+	if _, trusted := c.Assess(ctx, w, deckPath); trusted || c.TrustCode {
 		return true
 	}
 	title := w.Manifest.Title
 	if title == "" {
 		title = filepath.Base(deckPath)
 	}
-	store := trust.Store{Path: filepath.Join(c.Home, trust.FileName)}
-	if store.Trusted(w.Manifest.ID, w.Hash) {
-		return true
-	}
 	if !c.Ask(CodeQuestion(filepath.Base(deckPath), title, w.Code)) {
 		return false
 	}
+	store := trust.Store{Path: filepath.Join(c.Home, trust.FileName)}
 	if err := store.Remember(w.Manifest.ID, w.Hash, title); err != nil {
 		log.Printf("remember that %s may run its code: %v", deckPath, err)
 	}
@@ -373,37 +379,6 @@ func openError(deckPath string, err error) (title, msg string) {
 		return "A newer " + brand.Name + " viewer is needed", msg
 	}
 	return brand.Name, fmt.Sprintf("Couldn't open %s:\n%v", filepath.Base(deckPath), err)
-}
-
-// inUse tells CleanStale which work folders to keep: young ones (an instance may
-// be starting in it), those of live instances and those of running exports.
-func (s *session) inUse() func(dir string) bool {
-	var live []string
-	loaded := false
-	return func(dir string) bool {
-		if fi, err := os.Stat(dir); err == nil && time.Since(fi.ModTime()) < staleAge {
-			return true
-		}
-		if !loaded {
-			loaded = true
-			for _, r := range instance.List(s.home) {
-				if r.WorkDir != "" && instance.Alive(r) {
-					live = append(live, r.WorkDir)
-				}
-			}
-			for _, e := range instance.RunningExports(s.home) {
-				if e.WorkDir != "" {
-					live = append(live, e.WorkDir)
-				}
-			}
-		}
-		for _, w := range live {
-			if instance.PathKey(w, s.o.GOOS) == instance.PathKey(dir, s.o.GOOS) {
-				return true
-			}
-		}
-		return false
-	}
 }
 
 func (s *session) setErr(err error) {
