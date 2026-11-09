@@ -55,7 +55,8 @@ const (
 //
 // It returns *ConflictError, with the deck untouched, if the deck's manifest
 // Updated is not w.Manifest.Updated, and *BadNamesError if a file's name is
-// not legal. On success w.Entries, w.Sums and w.Manifest.Updated are updated;
+// not legal. An empty slides file is refused, deck untouched: Slidev writes
+// that file in place, so empty means it is in the middle of a write. On success w.Entries, w.Sums and w.Manifest.Updated are updated;
 // w.Hash and w.Code are not: recomputing them is the caller's job.
 func SaveFolder(w *Work, deckPath string, now time.Time) error {
 	files, err := currentFiles(w)
@@ -64,6 +65,13 @@ func SaveFolder(w *Work, deckPath string, now time.Time) error {
 	}
 	if dir, ok := files[w.Manifest.Entry]; !ok || dir {
 		return fmt.Errorf("cannot save: the slides file %s is not in the work folder", w.Manifest.Entry)
+	}
+	st, err := os.Stat(filepath.Join(w.Dir, filepath.FromSlash(deck.ExtractedPath(w.Manifest.Entry))))
+	if err != nil {
+		return err
+	}
+	if st.Size() == 0 {
+		return errors.New("the slides file is being written; save again in a moment")
 	}
 	names := make([]string, 0, len(files))
 	for name := range files {

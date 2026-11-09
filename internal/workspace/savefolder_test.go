@@ -279,6 +279,26 @@ func TestSaveFolderRefusesMissingSlides(t *testing.T) {
 	}
 }
 
+// Slidev writes slides.md in place, so a save can catch it empty, mid-write.
+func TestSaveFolderRefusesEmptySlides(t *testing.T) {
+	w, deckPath := openForSave(t)
+	orig, _ := os.ReadFile(deckPath)
+	if err := os.WriteFile(filepath.Join(w.Dir, "slides.md"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := SaveFolder(&w, deckPath, saveNow)
+	if err == nil || err.Error() != "the slides file is being written; save again in a moment" {
+		t.Fatalf("err = %v, want the mid-write refusal", err)
+	}
+	now, _ := os.ReadFile(deckPath)
+	if string(now) != string(orig) {
+		t.Error("the deck changed")
+	}
+	if ents, _ := os.ReadDir(filepath.Dir(deckPath)); len(ents) != 1 {
+		t.Errorf("deck folder has %d entries, want 1: no temp file", len(ents))
+	}
+}
+
 func TestSaveFolderRefusesSymlinks(t *testing.T) {
 	w, deckPath := openForSave(t)
 	orig, _ := os.ReadFile(deckPath)
