@@ -62,6 +62,9 @@ func SaveFolder(w *Work, deckPath string, now time.Time) error {
 	if err != nil {
 		return err
 	}
+	if dir, ok := files[w.Manifest.Entry]; !ok || dir {
+		return fmt.Errorf("cannot save: the slides file %s is not in the work folder", w.Manifest.Entry)
+	}
 	names := make([]string, 0, len(files))
 	for name := range files {
 		names = append(names, name)
@@ -162,7 +165,7 @@ func SaveFolder(w *Work, deckPath string, now time.Time) error {
 // whether it is a folder. Folders are those of w.Entries that still exist.
 func currentFiles(w *Work) (map[string]bool, error) {
 	files := map[string]bool{}
-	project, err := deck.ProjectFiles(w.Dir)
+	project, err := deck.ProjectFilesNoLinks(w.Dir)
 	if err != nil {
 		return nil, err
 	}
@@ -171,12 +174,15 @@ func currentFiles(w *Work) (map[string]bool, error) {
 	}
 	for _, name := range w.Entries {
 		rel := deck.ExtractedPath(strings.TrimSuffix(name, "/"))
-		st, err := os.Stat(filepath.Join(w.Dir, filepath.FromSlash(rel)))
+		st, err := os.Lstat(filepath.Join(w.Dir, filepath.FromSlash(rel)))
 		if errors.Is(err, os.ErrNotExist) {
 			continue
 		}
 		if err != nil {
 			return nil, err
+		}
+		if st.Mode()&os.ModeSymlink != 0 {
+			return nil, &deck.LinkError{Rel: rel}
 		}
 		switch {
 		case strings.HasSuffix(name, "/"):

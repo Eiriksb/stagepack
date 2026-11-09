@@ -21,7 +21,10 @@ var saveNow = time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
 // openForSave packs the fixture talk into a deck file and extracts it.
 func openForSave(t *testing.T) (Work, string) {
 	t.Helper()
-	deckPath := filepath.Join(t.TempDir(), "talk"+brand.Ext)
+	deckPath := filepath.Join(t.TempDir(), "a b%c", "my talk æøå 100%"+brand.Ext)
+	if err := os.MkdirAll(filepath.Dir(deckPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := pack.Pack(pack.Options{Dir: fixture, Out: deckPath, Warn: io.Discard}); err != nil {
 		t.Fatal(err)
 	}
@@ -34,9 +37,11 @@ func openForSave(t *testing.T) (Work, string) {
 }
 
 type zipEntry struct {
-	data   string
-	method uint16
-	crc    uint32
+	data     string
+	raw      string // the compressed bytes as stored in the deck
+	method   uint16
+	crc      uint32
+	modified time.Time
 }
 
 func readDeck(t *testing.T, deckPath string) (map[string]zipEntry, []string) {
@@ -58,7 +63,15 @@ func readDeck(t *testing.T, deckPath string) (map[string]zipEntry, []string) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got[f.Name] = zipEntry{string(b), f.Method, f.CRC32}
+		rr, err := f.OpenRaw()
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := io.ReadAll(rr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got[f.Name] = zipEntry{string(b), string(raw), f.Method, f.CRC32, f.Modified}
 		names = append(names, f.Name)
 	}
 	return got, names
@@ -127,9 +140,15 @@ func TestSaveFolderChangedAndNew(t *testing.T) {
 	if !found || w.Sums["public/new image æ.png"] == "" {
 		t.Errorf("Entries = %q, Sums = %v", w.Entries, w.Sums)
 	}
-	// The next save sees no change.
+	// The next save copies every entry but the manifest raw, new ones included.
 	if err := SaveFolder(&w, deckPath, saveNow.Add(time.Second)); err != nil {
 		t.Fatal(err)
+	}
+	again, _ := readDeck(t, deckPath)
+	for name, e := range after {
+		if name != brand.ManifestName && again[name] != e {
+			t.Errorf("%s was re-encoded by the second save", name)
+		}
 	}
 }
 
@@ -238,5 +257,42 @@ func TestSaveFolderBadName(t *testing.T) {
 	ents, _ := os.ReadDir(filepath.Dir(deckPath))
 	if len(ents) != 1 {
 		t.Errorf("deck folder has %d entries, want 1", len(ents))
+	}
+}
+
+func TestSaveFolderRefusesMissingSlides(t *testing.T) {
+	w, deckPath := openForSave(t)
+	orig, _ := os.ReadFile(deckPath)
+	if err := os.Remove(filepath.Join(w.Dir, "slides.md")); err != nil {
+		t.Fatal(err)
+	}
+	err := SaveFolder(&w, deckPath, saveNow)
+	if err == nil || !strings.Contains(err.Error(), "slides.md") {
+		t.Fatalf("err = %v, want one naming slides.md", err)
+	}
+	now, _ := os.ReadFile(deckPath)
+	if string(now) != string(orig) {
+		t.Error("the deck changed")
+	}
+	if ents, _ := os.ReadDir(filepath.Dir(deckPath)); len(ents) != 1 {
+		t.Errorf("deck folder has %d entries, want 1", len(ents))
+	}
+}
+
+func TestSaveFolderRefusesSymlinks(t *testing.T) {
+	w, deckPath := openForSave(t)
+	orig, _ := os.ReadFile(deckPath)
+	outside := filepath.Join(t.TempDir(), "secret.txt")
+	put(t, outside, "SECRET")
+	if err := os.Symlink(outside, filepath.Join(w.Dir, "public", "link.txt")); err != nil {
+		t.Skip("no symlinks:", err)
+	}
+	err := SaveFolder(&w, deckPath, saveNow)
+	if err == nil || !strings.Contains(err.Error(), "public/link.txt") {
+		t.Fatalf("err = %v, want one naming public/link.txt", err)
+	}
+	now, _ := os.ReadFile(deckPath)
+	if string(now) != string(orig) || strings.Contains(string(now), "SECRET") {
+		t.Error("the deck changed")
 	}
 }

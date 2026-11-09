@@ -20,6 +20,13 @@ func (e *DanglingLinkError) Error() string {
 // LoopError is a link that leads back to a folder that contains it.
 type LoopError struct{ Rel string }
 
+// LinkError is a symlink where none is allowed (see ProjectFilesNoLinks).
+type LinkError struct{ Rel string }
+
+func (e *LinkError) Error() string {
+	return fmt.Sprintf("%s is a link, which a deck cannot hold", e.Rel)
+}
+
 func (e *LoopError) Error() string {
 	return fmt.Sprintf("%s links back to a folder that contains it", e.Rel)
 }
@@ -32,6 +39,10 @@ func (e *LoopError) Error() string {
 // link there need not lead anywhere. A link that leads nowhere is a
 // *DanglingLinkError; a link that loops, a *LoopError.
 func WalkProject(root string, skip func(rel string) bool, visit func(rel, abs string, st fs.FileInfo) error) error {
+	return walkProject(root, false, skip, visit)
+}
+
+func walkProject(root string, noLinks bool, skip func(rel string) bool, visit func(rel, abs string, st fs.FileInfo) error) error {
 	var walk func(abs, rel string, ancestors []string) error
 	walk = func(abs, rel string, ancestors []string) error {
 		real, err := filepath.EvalSymlinks(abs)
@@ -57,6 +68,11 @@ func WalkProject(root string, skip func(rel string) bool, visit func(rel, abs st
 			childAbs := filepath.Join(abs, name)
 			if skip != nil && skip(childRel) {
 				continue
+			}
+			if noLinks {
+				if lst, err := os.Lstat(childAbs); err == nil && lst.Mode()&fs.ModeSymlink != 0 {
+					return &LinkError{Rel: childRel}
+				}
 			}
 			st, err := os.Stat(childAbs) // follows symlinks
 			if err != nil {
@@ -92,8 +108,18 @@ func WalkProject(root string, skip func(rel string) bool, visit func(rel, abs st
 // ProjectFiles lists the project's files at root as sorted slash paths, by the
 // rules of WalkProject: no node_modules or .git anywhere, no top-level dist or .slidev.
 func ProjectFiles(root string) ([]string, error) {
+	return projectFiles(root, false)
+}
+
+// ProjectFilesNoLinks is ProjectFiles for a folder that must hold no links
+// (a work folder): a link anywhere in it is a *LinkError, not followed.
+func ProjectFilesNoLinks(root string) ([]string, error) {
+	return projectFiles(root, true)
+}
+
+func projectFiles(root string, noLinks bool) ([]string, error) {
 	var files []string
-	err := WalkProject(root, nil, func(rel, _ string, _ fs.FileInfo) error {
+	err := walkProject(root, noLinks, nil, func(rel, _ string, _ fs.FileInfo) error {
 		files = append(files, rel)
 		return nil
 	})
