@@ -148,6 +148,8 @@ type fakeStart struct {
 	// hang, when set, makes Start wait for its context, as a slow Slidev does; it is closed
 	// when Start is waiting.
 	hang chan struct{}
+	// during, when set, runs while Slidev is starting, before Start returns.
+	during func()
 }
 
 func (f *fakeStart) start(ctx context.Context, c slidev.Config, port int) (Server, error) {
@@ -162,6 +164,9 @@ func (f *fakeStart) start(ctx context.Context, c slidev.Config, port int) (Serve
 	}
 	if n := len(f.calls); n <= len(f.fail) {
 		return nil, f.fail[n-1]
+	}
+	if f.during != nil {
+		f.during()
 	}
 	f.srv = &fakeServer{port: port, done: make(chan error, 1)}
 	return f.srv, nil
@@ -781,6 +786,7 @@ func TestServeBusy(t *testing.T) {
 	}
 }
 
+// Slidev dying says so, and the work folder stays: the edits in it can still be saved.
 func TestServeSlidevDies(t *testing.T) {
 	home := t.TempDir()
 	deckPath := packFixture(t, t.TempDir(), "talk"+brand.Ext, nil)
@@ -800,11 +806,59 @@ func TestServeSlidevDies(t *testing.T) {
 	if log := str(t, ev, "log"); !strings.Contains(log, "Error: the server crashed") {
 		t.Errorf("error log = %q, want the end of Slidev's log", log)
 	}
+
+	// Still serving, with the work folder intact.
+	slides := filepath.Join(workDir, "slides.md")
+	data, err := os.ReadFile(slides)
+	if err != nil {
+		t.Fatalf("the work folder went with Slidev: %v", err)
+	}
+	edited := string(data) + "\nWritten before the crash.\n"
+	if err := os.WriteFile(slides, []byte(edited), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.send(`{"cmd":"save"}`)
+	h.expect("saved")
+	if got := entryText(t, deckPath, "slides.md"); got != edited {
+		t.Errorf("the deck's slides.md = %q, want the edit saved after the crash", got)
+	}
+	if _, err := os.Stat(workDir); err != nil {
+		t.Errorf("the work folder is gone before stdin closed: %v", err)
+	}
+	if recs := instance.List(home); len(recs) != 1 {
+		t.Errorf("instance records = %+v, want the claim kept until the end", recs)
+	}
+
+	h.closeStdin()
 	h.expect("stopped")
 	if code := h.wait(); code != 1 {
 		t.Errorf("exit %d, want 1", code)
 	}
 	checkCleanedUp(t, home, workDir)
+}
+
+// After Slidev died, a stop and a signal end it as the end of stdin does: cleaned up, exit 1.
+func TestServeSlidevDiesThenStops(t *testing.T) {
+	for name, stop := range map[string]func(h *harness){
+		"stop":   func(h *harness) { h.send(`{"cmd":"stop"}`) },
+		"signal": func(h *harness) { h.cancel() },
+	} {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			deckPath := packFixture(t, t.TempDir(), "talk"+brand.Ext, nil)
+			h := serveDeck(t, Options{Home: home, DeckPath: deckPath})
+			workDir := checkUnpacked(t, h.expect("unpacked"), home, deckPath, true)
+			h.expect("ready")
+			h.fake.server().exit(errors.New("exit status 1"))
+			h.expect("error")
+			stop(h)
+			h.expect("stopped")
+			if code := h.wait(); code != 1 {
+				t.Errorf("exit %d, want 1", code)
+			}
+			checkCleanedUp(t, home, workDir)
+		})
+	}
 }
 
 func TestServeStartFails(t *testing.T) {

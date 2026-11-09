@@ -183,6 +183,16 @@ func (h *Handle) Release() {
 	}
 }
 
+// Holder is the record of the instance that took the deck over from this handle, or nil while
+// the record is still ours, or is gone. Records are replaced atomically, so no lock is needed.
+func (h *Handle) Holder() *Record {
+	cur, err := readRecord(recordPath(h.home, h.absPath))
+	if err != nil || h.owned(cur) {
+		return nil
+	}
+	return &cur
+}
+
 // Alive reports whether r is a running instance: its PID is running and its Slidev answers
 // on the recorded address within a second. The HTTP probe is what makes a reused PID
 // harmless; the PID check is what stops a foreign process on a reused port from counting.

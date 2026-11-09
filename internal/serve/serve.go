@@ -22,8 +22,13 @@
 //
 // The end of stdin stops it, as {"cmd":"stop"} and the context (SIGINT, SIGTERM) do. A line
 // that isn't one of the commands gets an error event, and serving goes on; an answer while no
-// question is pending is ignored. Exit codes: 0 stopped, 1 error (Slidev died or couldn't
-// start), 2 usage (cmd/stagepack), 3 not trusted (no event; the work folder is removed), 4 busy.
+// question is pending is ignored. When Slidev dies after it was ready, an error event says so
+// and the work folder stays: save and stop still work, and the exit code is then 1. Exit codes:
+// 0 stopped, 1 error (Slidev died or couldn't start), 2 usage (cmd/stagepack), 3 not trusted (no
+// event; the work folder is removed), 4 busy.
+//
+// The deck is claimed in Home and in every peer home (claims.go), so that a talk open in one
+// Stagepack is open for the others, whichever folder they are installed in.
 package serve
 
 import (
@@ -65,6 +70,9 @@ const (
 type Options struct {
 	Home     string // the viewer's folder: node/, runtimes/, logs/, instances/, trusted.json
 	DeckPath string
+	// PeerHomes are other Stagepacks' folders, where the deck is claimed too. Home itself and
+	// repeats are ignored; one that can't be written is skipped.
+	PeerHomes []string
 	// TrustCode runs the talk's code without asking, and without adding it to the trusted
 	// list, also when it is saved.
 	TrustCode bool
@@ -134,8 +142,8 @@ type session struct {
 	cmds <-chan command // closed at the end of stdin
 
 	home, deckPath, rtDir string
-	handle                *instance.Handle // the claim on the deck, once made
-	work                  workspace.Work   // Dir is "" until it is unpacked, and after it is removed
+	claims                claims         // the claim on the deck in every home, once made
+	work                  workspace.Work // Dir is "" until it is unpacked, and after it is removed
 	srv                   Server
 	title, logPath        string
 	check                 app.CodeCheck
@@ -153,7 +161,11 @@ func (s *session) run(ctx context.Context) int {
 	if err != nil {
 		return s.fail(err.Error(), "")
 	}
-	file := filepath.Base(s.deckPath)
+	file := filepath.Base(s.deckPath) // the name the person knows it by, if it is a link
+	// The same file through two paths is one claim, and a save replaces the file, not a link to it.
+	if resolved, err := filepath.EvalSymlinks(s.deckPath); err == nil {
+		s.deckPath = resolved
+	}
 	s.rtDir = filepath.Join(s.home, "runtimes", strconv.Itoa(slidevrt.Major()))
 
 	// Work folders left by a crash. Ours is kept from the next clean-up by the claim.
@@ -161,7 +173,7 @@ func (s *session) run(ctx context.Context) int {
 		log.Printf("clean old work folders: %v", err)
 	}
 	// One instance per deck: the viewer, or another editor, may have it open.
-	existing, h, err := instance.Claim(s.home, s.deckPath, instance.Alive)
+	existing, held, err := claimDeck(s.home, s.peerHomes(), s.deckPath, instance.Alive)
 	if err != nil {
 		return s.fail(fmt.Sprintf("Couldn't open %s: %v", file, err), "")
 	}
@@ -169,7 +181,7 @@ func (s *session) run(ctx context.Context) int {
 		s.out.emit(busyEvent{Event: "busy", BaseURL: existing.BaseURL})
 		return ExitBusy
 	}
-	s.handle = h
+	s.claims = held
 
 	work, err := workspace.Extract(s.deckPath, s.rtDir)
 	if err != nil {
@@ -205,10 +217,8 @@ func (s *session) run(ctx context.Context) int {
 		s.keepTrust = true
 		// The question may have been up for longer than a claim counts as starting, and
 		// another launch may have taken the talk over meanwhile.
-		if err := s.handle.Renew(); errors.Is(err, instance.ErrNotOwner) {
-			s.cleanup()
-			s.out.emit(busyEvent{Event: "busy", BaseURL: s.currentBaseURL()})
-			return ExitBusy
+		if err := s.claims.renew(); errors.Is(err, instance.ErrNotOwner) {
+			return s.takenOver()
 		} else if err != nil {
 			log.Printf("renew the claim on %s: %v", s.deckPath, err)
 		}
@@ -231,25 +241,35 @@ func (s *session) run(ctx context.Context) int {
 	if !ok {
 		return code
 	}
-	if err := s.handle.Update(srv.Port(), srv.BaseURL(), s.work.Dir); err != nil {
+	// Another launch may have taken the talk over while Slidev was starting.
+	if err := s.claims.update(srv.Port(), srv.BaseURL(), s.work.Dir); errors.Is(err, instance.ErrNotOwner) {
+		return s.takenOver()
+	} else if err != nil {
 		log.Printf("record the running instance: %v", err)
 	}
 	s.out.emit(readyEvent{Event: "ready", Port: srv.Port(), BaseURL: srv.BaseURL(), WorkDir: s.work.Dir})
 
+	exit := ExitStopped
+	slidevDone := srv.Done()
 	for {
 		select {
 		case <-ctx.Done():
-			return s.stop()
-		case err := <-srv.Done():
+			return s.finish(exit)
+		case err := <-slidevDone:
+			// The work folder is intact, and may hold edits nothing else has: it stays for a
+			// save, until the editor says stop.
+			slidevDone = nil
+			exit = ExitError
 			msg := "Slidev stopped unexpectedly"
 			if err != nil {
 				msg += ": " + err.Error()
 			}
-			return s.fail(msg, slidev.LogTail(s.logPath))
+			log.Printf("serve %s: %s", s.o.DeckPath, msg)
+			s.out.emit(errorEvent{Event: "error", Message: msg, Log: slidev.LogTail(s.logPath)})
 		case c, open := <-s.cmds:
 			switch {
 			case !open || c.kind == cmdStop:
-				return s.stop()
+				return s.finish(exit)
 			case c.kind == cmdSave:
 				s.save(ctx)
 			case c.kind == cmdYes || c.kind == cmdNo:
@@ -405,17 +425,26 @@ func (s *session) cleanup() {
 		}
 		s.work.Dir = ""
 	}
-	if s.handle != nil {
-		s.handle.Release()
-		s.handle = nil
-	}
+	s.claims.release()
+	s.claims = nil
 }
 
 // stop cleans up and says so.
-func (s *session) stop() int {
+func (s *session) stop() int { return s.finish(ExitStopped) }
+
+// finish cleans up, says so and returns code.
+func (s *session) finish(code int) int {
 	s.cleanup()
 	s.out.emit(stoppedEvent{Event: "stopped"})
-	return ExitStopped
+	return code
+}
+
+// takenOver gives way to the launch that replaced this one's claim: it cleans up and says busy.
+func (s *session) takenOver() int {
+	baseURL := s.claims.holderBaseURL()
+	s.cleanup()
+	s.out.emit(busyEvent{Event: "busy", BaseURL: baseURL})
+	return ExitBusy
 }
 
 // fail reports msg and logTail, then cleans up and says so.
@@ -431,14 +460,29 @@ func (s *session) trustStore() trust.Store {
 	return trust.Store{Path: filepath.Join(s.home, trust.FileName)}
 }
 
-// currentBaseURL is the address in the deck's instance record, if any.
-func (s *session) currentBaseURL() string {
-	for _, r := range instance.List(s.home) {
-		if instance.PathKey(r.DeckPath, runtime.GOOS) == instance.PathKey(s.deckPath, runtime.GOOS) {
-			return r.BaseURL
+// peerHomes is o.PeerHomes, absolute, without this program's own home and without repeats, also
+// through a link: a second claim in one home would find the first and call the talk busy.
+func (s *session) peerHomes() []string {
+	key := func(p string) string {
+		if resolved, err := filepath.EvalSymlinks(p); err == nil {
+			p = resolved
+		}
+		return instance.PathKey(p, runtime.GOOS)
+	}
+	seen := map[string]bool{key(s.home): true}
+	var peers []string
+	for _, p := range s.o.PeerHomes {
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			log.Printf("peer home %s: %v", p, err)
+			continue
+		}
+		if k := key(abs); !seen[k] {
+			seen[k] = true
+			peers = append(peers, abs)
 		}
 	}
-	return ""
+	return peers
 }
 
 // nodePath is the bundled node program.

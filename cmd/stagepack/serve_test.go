@@ -23,6 +23,9 @@ type serveCall struct {
 // fakeServe replaces serve.Run; it returns code.
 func fakeServe(t *testing.T, code int) *[]serveCall {
 	t.Helper()
+	// No test sees this user's real install as a peer home.
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("LOCALAPPDATA", t.TempDir())
 	var got []serveCall
 	old := serveDeck
 	serveDeck = func(ctx context.Context, o serve.Options, in io.Reader, out io.Writer, d serve.Deps) int {
@@ -64,6 +67,42 @@ func TestServeCommand(t *testing.T) {
 	exe, _ = filepath.EvalSymlinks(exe)
 	if c := (*got)[1].o; c.Home != filepath.Dir(exe) || c.TrustCode || c.Addons != nil {
 		t.Errorf("serve got %+v", c)
+	}
+}
+
+func TestServeCommandPeerHomes(t *testing.T) {
+	got := fakeServe(t, 0)
+	def, err := defaultInstallHome()
+	if err != nil {
+		t.Fatal(err)
+	}
+	serveWith := func(args ...string) serve.Options {
+		t.Helper()
+		var so, se bytes.Buffer
+		args = append([]string{"serve", "--json", "--home", "/h"}, append(args, "x"+brand.Ext)...)
+		if code := run(args, &so, &se); code != 0 {
+			t.Fatalf("exit %d: %s", code, se.String())
+		}
+		return (*got)[len(*got)-1].o
+	}
+
+	// No default install on this computer: only the folders named.
+	if o := serveWith(); o.PeerHomes != nil {
+		t.Errorf("peer homes = %q, want none: the default install's folder does not exist", o.PeerHomes)
+	}
+	if o := serveWith("--peer-home", "/p1", "--peer-home", "/p2"); !reflect.DeepEqual(o.PeerHomes, []string{"/p1", "/p2"}) {
+		t.Errorf("peer homes = %q, want the two named", o.PeerHomes)
+	}
+
+	// With one, that comes first.
+	if err := os.MkdirAll(def, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if o := serveWith(); !reflect.DeepEqual(o.PeerHomes, []string{def}) {
+		t.Errorf("peer homes = %q, want the default install %s", o.PeerHomes, def)
+	}
+	if o := serveWith("--peer-home", "/p1"); !reflect.DeepEqual(o.PeerHomes, []string{def, "/p1"}) {
+		t.Errorf("peer homes = %q, want the default install, then /p1", o.PeerHomes)
 	}
 }
 

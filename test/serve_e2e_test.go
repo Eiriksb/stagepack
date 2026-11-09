@@ -48,7 +48,11 @@ func TestServeE2E(t *testing.T) {
 	}
 	t.Cleanup(func() { os.Remove(filepath.Join(home, "logs", save.JournalKey(m.ID, deckPath)+".log")) })
 
-	cmd := exec.Command(bin, "serve", "--json", "--home", home, "--addon", probe, deckPath)
+	// A peer home the test owns; and the default per-user install, which is looked up from the
+	// environment, is a temp folder too, so this never writes to the person's installed Stagepack.
+	peer := t.TempDir()
+	cmd := exec.Command(bin, "serve", "--json", "--home", home, "--peer-home", peer, "--addon", probe, deckPath)
+	cmd.Env = append(os.Environ(), "XDG_DATA_HOME="+t.TempDir())
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -152,6 +156,11 @@ func TestServeE2E(t *testing.T) {
 		t.Errorf("a second claim got %+v, %v; want serve's record at %s", existing, err, base)
 	}
 
+	// So does one that looks in a peer home.
+	if recs := instance.List(peer); len(recs) != 1 || recs[0].BaseURL != base || recs[0].WorkDir != workDir {
+		t.Errorf("records in the peer home = %+v, want serve's at %s", recs, base)
+	}
+
 	// An edit, saved on command.
 	slides := filepath.Join(workDir, "slides.md")
 	data, err := os.ReadFile(slides)
@@ -205,5 +214,8 @@ func TestServeE2E(t *testing.T) {
 		if instance.PathKey(r.DeckPath, "linux") == instance.PathKey(deckPath, "linux") {
 			t.Errorf("the instance record is still there: %+v", r)
 		}
+	}
+	if recs := instance.List(peer); len(recs) != 0 {
+		t.Errorf("the record in the peer home is still there: %+v", recs)
 	}
 }

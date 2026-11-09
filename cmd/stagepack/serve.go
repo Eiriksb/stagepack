@@ -15,7 +15,7 @@ import (
 	"stagepack/internal/serve"
 )
 
-var serveUsage = "usage: " + cmdName + " serve --json [--home DIR] [--trust-code] [--addon DIR]... FILE"
+var serveUsage = "usage: " + cmdName + " serve --json [--home DIR] [--peer-home DIR]... [--trust-code] [--addon DIR]... FILE"
 
 // serveDeck is serve.Run; tests replace it.
 var serveDeck = serve.Run
@@ -32,10 +32,11 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	fs.Usage = func() { fmt.Fprintln(stderr, serveUsage) }
 	var jsonLines, trustCode bool
 	var home string
-	var addons listFlag
+	var addons, peers listFlag
 	fs.BoolVar(&jsonLines, "json", false, "events as JSON lines on stdout, commands as JSON lines on stdin (required)")
 	fs.BoolVar(&trustCode, "trust-code", false, "run the talk's own code without asking (only for talks you trust)")
 	fs.StringVar(&home, "home", "", "the viewer's folder (default: the folder of this program)")
+	fs.Var(&peers, "peer-home", "another Stagepack's folder, where the talk is claimed too so that it hands over instead of opening a second copy; repeatable")
 	fs.Var(&addons, "addon", "a Slidev addon folder to load on top of the talk's own (the editor's); repeatable")
 	var files []string
 	rest := args
@@ -71,5 +72,20 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	// Ctrl-C or SIGTERM stops it as the end of stdin does. On Windows an editor closes stdin.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	return serveDeck(ctx, serve.Options{Home: home, DeckPath: files[0], TrustCode: trustCode, Addons: addons}, stdin, stdout, serve.Deps{})
+	return serveDeck(ctx, serve.Options{Home: home, PeerHomes: peerHomes(peers), DeckPath: files[0], TrustCode: trustCode, Addons: addons},
+		stdin, stdout, serve.Deps{})
+}
+
+// peerHomes is where a served deck is claimed besides --home: the default per-user install, when
+// this computer has one, then the folders named with --peer-home. An editor and the plain viewer
+// have different folders by design; without this each would miss that the other has the talk
+// open. serve.Run ignores the folder when it is --home itself.
+func peerHomes(named []string) []string {
+	var peers []string
+	if def, err := defaultInstallHome(); err == nil {
+		if st, err := os.Stat(def); err == nil && st.IsDir() {
+			peers = append(peers, def)
+		}
+	}
+	return append(peers, named...)
 }
