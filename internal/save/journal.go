@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"time"
 
+	"stagepack/internal/atomicfile"
 	"stagepack/internal/deck"
 )
 
@@ -161,7 +162,7 @@ func SetAside(j Journal, key string) (kept string, err error) {
 		return "", nil
 	}
 	kept = filepath.Join(j.Dir, fmt.Sprintf("%s.kept-%s.json", key, time.Now().UTC().Format("20060102T150405.000000000Z")))
-	if err := replaceFile(src, kept); err != nil {
+	if err := atomicfile.Rename(src, kept); err != nil {
 		return "", fmt.Errorf("keep %s: %w", src, err)
 	}
 	return kept, nil
@@ -193,43 +194,9 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) (err error) {
 	if err = f.Close(); err != nil {
 		return err
 	}
-	if err = replaceFile(tmp, path); err != nil {
+	if err = atomicfile.Rename(tmp, path); err != nil {
 		return err
 	}
-	syncDir(filepath.Dir(path))
+	atomicfile.SyncDir(filepath.Dir(path))
 	return nil
-}
-
-// Renaming over a file on Windows fails for a moment while a virus scanner or
-// the indexer has it open, so the rename is retried there.
-var (
-	rename         = os.Rename
-	retryRename    = runtime.GOOS == "windows"
-	renameAttempts = 5
-	renameWait     = 250 * time.Millisecond // between attempts: about 1 s in all
-)
-
-// replaceFile renames src over dst, retrying on Windows.
-func replaceFile(src, dst string) error {
-	var err error
-	for i := 0; i < renameAttempts; i++ {
-		if i > 0 {
-			time.Sleep(renameWait)
-		}
-		if err = rename(src, dst); err == nil || !retryRename {
-			return err
-		}
-	}
-	return err
-}
-
-// syncDir makes a rename in dir durable where the OS supports it (not Windows).
-func syncDir(dir string) {
-	if runtime.GOOS == "windows" {
-		return
-	}
-	if d, err := os.Open(dir); err == nil {
-		d.Sync()
-		d.Close()
-	}
 }

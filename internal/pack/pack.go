@@ -267,81 +267,26 @@ func collectProject(dir, out string, exclude []string) ([]item, error) {
 		return false
 	}
 	var items []item
-	var walk func(abs, rel string, ancestors []string) error
-	walk = func(abs, rel string, ancestors []string) error {
-		real, err := filepath.EvalSymlinks(abs)
-		if err != nil {
-			return fmt.Errorf("pack: %s: %w", rel, err)
-		}
-		for _, a := range ancestors {
-			if a == real {
-				return fmt.Errorf("pack: %s links back to a folder that contains it", rel)
-			}
-		}
-		ancestors = append(ancestors, real)
-		des, err := os.ReadDir(abs)
-		if err != nil {
-			return err
-		}
-		for _, de := range des {
-			name := de.Name()
-			childRel := path.Join(rel, name)
-			if rel == "" {
-				childRel = name
-			}
-			childAbs := filepath.Join(abs, name)
-			// An excluded path is never looked at, so a link there need not lead anywhere.
-			if excluded(childRel) {
-				continue
-			}
-			st, err := os.Stat(childAbs) // follows symlinks
-			if err != nil {
-				if target, dangling := danglingLink(childAbs, err); dangling {
-					return fmt.Errorf("pack: %s is a link to %s, which is not here; leave it out with --exclude %s",
-						childRel, target, childRel)
-				}
-				return fmt.Errorf("pack: %s: %w", childRel, err)
-			}
-			if st.IsDir() {
-				switch {
-				case name == "node_modules" || name == ".git":
-					continue
-				case rel == "" && (name == "dist" || name == ".slidev"):
-					continue
-				}
-				if err := walk(childAbs, childRel, ancestors); err != nil {
-					return err
-				}
-				continue
-			}
-			if !st.Mode().IsRegular() || childAbs == out || childAbs == out+".tmp" {
-				continue
-			}
-			items = append(items, item{name: childRel, src: childAbs, mod: st.ModTime()})
+	skip := func(rel string) bool { return excluded(rel) } // an excluded path is never looked at
+	err := deck.WalkProject(dir, skip, func(rel, abs string, st fs.FileInfo) error {
+		if abs != out && abs != out+".tmp" {
+			items = append(items, item{name: rel, src: abs, mod: st.ModTime()})
 		}
 		return nil
-	}
-	if err := walk(dir, "", nil); err != nil {
-		return nil, err
+	})
+	var dl *deck.DanglingLinkError
+	var lp *deck.LoopError
+	switch {
+	case errors.As(err, &dl):
+		return nil, fmt.Errorf("pack: %s is a link to %s, which is not here; leave it out with --exclude %s",
+			dl.Rel, dl.Target, dl.Rel)
+	case errors.As(err, &lp):
+		return nil, fmt.Errorf("pack: %w", lp)
+	case err != nil:
+		return nil, fmt.Errorf("pack: %w", err)
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].name < items[j].name })
 	return items, nil
-}
-
-// danglingLink reports whether p, which failed to stat with err, is a symlink whose target does not exist, and
-// that target.
-func danglingLink(p string, err error) (string, bool) {
-	if !errors.Is(err, fs.ErrNotExist) {
-		return "", false
-	}
-	if lst, lerr := os.Lstat(p); lerr != nil || lst.Mode()&fs.ModeSymlink == 0 {
-		return "", false
-	}
-	target, rerr := os.Readlink(p)
-	if rerr != nil {
-		return "", false
-	}
-	return target, true
 }
 
 // usedPublic keeps the files in public/ that the talk names by their URL path ("/clips/a.mp4" for

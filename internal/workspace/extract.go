@@ -32,6 +32,10 @@ type Work struct {
 	// manifest and the slides file (which note edits change), and over Code.
 	// The same talk with only its notes edited keeps its Hash.
 	Hash string
+	// Sums maps each file entry's name to the hex SHA-256 of its content as
+	// Extract wrote it (SaveFolder updates it). A file whose sum is unchanged
+	// is copied raw into the deck on save. The manifest and folders are not in it.
+	Sums map[string]string
 }
 
 // HasCode reports whether opening the deck runs code it brought along.
@@ -112,11 +116,15 @@ func Extract(deckPath, runtimeDir string) (Work, error) {
 		return Work{}, err
 	}
 	var sums []string // "<name> <sha256>" of the entries Hash covers
+	fileSums := map[string]string{}
 	for _, it := range items {
 		sum, err := write(dir, it)
 		if err != nil {
 			os.RemoveAll(dir)
 			return Work{}, err
+		}
+		if sum != nil {
+			fileSums[it.file.Name] = hex.EncodeToString(sum)
 		}
 		if it.file.Name != m.Entry {
 			sums = append(sums, fmt.Sprintf("%q %x", it.file.Name, sum))
@@ -126,7 +134,7 @@ func Extract(deckPath, runtimeDir string) (Work, error) {
 		data, _ := os.ReadFile(filepath.Join(dir, filepath.FromSlash(deck.ExtractedPath(name))))
 		return data
 	}
-	w := Work{Dir: dir, Manifest: m, Entries: names, Code: deck.CodeReasons(names, read)}
+	w := Work{Dir: dir, Manifest: m, Entries: names, Sums: fileSums, Code: deck.CodeReasons(names, read)}
 	sort.Strings(sums)
 	h := sha256.New()
 	for _, l := range sums {

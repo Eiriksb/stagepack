@@ -268,33 +268,3 @@ func TestRewriteEntryKeepsMode(t *testing.T) {
 		t.Errorf("mode %v, want 0600", st.Mode().Perm())
 	}
 }
-
-func TestRenameRetries(t *testing.T) {
-	oldRename, oldRetry, oldWait := rename, retryRename, renameWait
-	t.Cleanup(func() { rename, retryRename, renameWait = oldRename, oldRetry, oldWait })
-	retryRename, renameWait = true, 0
-
-	calls := 0
-	rename = func(a, b string) error {
-		calls++
-		if calls < 3 {
-			return errors.New("sharing violation")
-		}
-		return nil
-	}
-	if err := replaceFile("a", "b"); err != nil || calls != 3 {
-		t.Errorf("replaceFile = %v after %d calls, want nil after 3", err, calls)
-	}
-
-	calls = 0
-	rename = func(a, b string) error { calls++; return errors.New("sharing violation") }
-	if err := replaceFile("a", "b"); err == nil || calls != renameAttempts {
-		t.Errorf("replaceFile = %v after %d calls, want an error after %d", err, calls, renameAttempts)
-	}
-
-	retryRename = false
-	calls = 0
-	if err := replaceFile("a", "b"); err == nil || calls != 1 {
-		t.Errorf("without retry: %v after %d calls, want an error after 1", err, calls)
-	}
-}
