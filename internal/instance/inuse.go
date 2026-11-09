@@ -11,8 +11,10 @@ import (
 const staleWorkAge = 10 * time.Minute
 
 // InUse tells workspace.CleanStale which work folders to keep: those younger than staleWorkAge
-// at now (an instance may be starting in it), those of the live instances under home (Alive)
-// and those of its running exports. The records are read once, on the first folder that is
+// at now (an instance may be starting in it), those of the instances under home whose process
+// runs (PIDRunning, not Alive: after Slidev dies, serve keeps running so the person can still
+// save, and nothing answers over HTTP; a reused PID only delays a clean-up) and those of its
+// running exports. The records are read once, on the first folder that is
 // not young.
 func InUse(home string, now time.Time) func(dir string) bool {
 	var live []string
@@ -24,7 +26,7 @@ func InUse(home string, now time.Time) func(dir string) bool {
 		if !loaded {
 			loaded = true
 			for _, r := range List(home) {
-				if r.WorkDir != "" && Alive(r) {
+				if r.WorkDir != "" && r.PID > 0 && PIDRunning(r.PID) {
 					live = append(live, r.WorkDir)
 				}
 			}

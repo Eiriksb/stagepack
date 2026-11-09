@@ -71,3 +71,56 @@ func TestInUse(t *testing.T) {
 		t.Error("InUse an hour later keeps the folder that was young")
 	}
 }
+
+// After Slidev dies, serve keeps running so the person can still save: its record's PID runs
+// but nothing answers at its address. The work folder stays while that PID runs.
+func TestInUseKeepsTheFolderOfARunningPIDWhoseServerDoesNotAnswer(t *testing.T) {
+	home := t.TempDir()
+	work := t.TempDir()
+	now := time.Now()
+	old := now.Add(-11 * time.Minute)
+	folder := func(name string) string {
+		d := filepath.Join(work, name)
+		if err := os.Mkdir(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(d, old, old); err != nil {
+			t.Fatal(err)
+		}
+		return d
+	}
+	silent, dead := folder("silent"), folder("dead")
+
+	// An address nothing listens on: a server that was closed.
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	u, _ := url.Parse(srv.URL)
+	port, _ := strconv.Atoi(u.Port())
+	base := srv.URL
+	srv.Close()
+
+	for name, c := range map[string]struct {
+		pid  int
+		dir  string
+		want bool
+	}{
+		"running": {os.Getpid(), silent, true},
+		"dead":    {deadPID(t), dead, false},
+	} {
+		talk := filepath.Join(t.TempDir(), name+brand.Ext)
+		if _, _, err := Claim(home, talk, neverAlive); err != nil {
+			t.Fatal(err)
+		}
+		rec := mustRead(t, home, talk)
+		rec.PID, rec.Port, rec.BaseURL, rec.WorkDir = c.pid, port, base, c.dir
+		if err := writeRecord(recordPath(home, talk), rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	inUse := InUse(home, now)
+	if !inUse(silent) {
+		t.Error("InUse drops the folder of a running PID whose server does not answer")
+	}
+	if inUse(dead) {
+		t.Error("InUse keeps the folder of a dead PID")
+	}
+}
