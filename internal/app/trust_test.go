@@ -3,17 +3,21 @@ package app
 import (
 	"archive/zip"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"stagepack/internal/brand"
 	"stagepack/internal/instance"
 	"stagepack/internal/pack"
+	"stagepack/internal/slidev"
 	"stagepack/internal/trust"
+	"stagepack/internal/workspace"
 )
 
 // packCodeFixture packs the fixture with a vite.config.ts added: a talk that contains code.
@@ -300,5 +304,47 @@ func TestCodeQuestionText(t *testing.T) {
 	}
 	if got := oneLine(strings.Repeat("a", 200), 10); got != "aaaaaaaaa…" {
 		t.Errorf("oneLine cut = %q", got)
+	}
+}
+
+// Assess reports the reasons and whether this version is trusted, and never asks; TrustCode is
+// Allow's business, not Assess's.
+func TestCodeCheckAssess(t *testing.T) {
+	home := t.TempDir()
+	headmatter := func(theme string) func(context.Context, string, string, string) (slidev.Headmatter, error) {
+		return func(context.Context, string, string, string) (slidev.Headmatter, error) {
+			return slidev.Headmatter{Theme: json.RawMessage(theme), Addons: json.RawMessage(`[]`)}, nil
+		}
+	}
+	never := func(string) bool { t.Error("Assess asked"); return false }
+	assess := func(deckPath, theme string, trustCode bool) (workspace.Work, []string, bool) {
+		t.Helper()
+		w, err := workspace.Extract(deckPath, t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		c := CodeCheck{Home: home, TrustCode: trustCode, Ask: never, ReadHeadmatter: headmatter(theme)}
+		reasons, trusted := c.Assess(context.Background(), &w, deckPath)
+		return w, reasons, trusted
+	}
+
+	if _, reasons, trusted := assess(packFixture(t, t.TempDir()), `"default"`, false); len(reasons) != 0 || !trusted {
+		t.Errorf("plain talk: reasons %q, trusted %v; want none, true", reasons, trusted)
+	}
+	plainTheme := packFixture(t, t.TempDir())
+	w, reasons, trusted := assess(plainTheme, `"./my-theme"`, false)
+	if trusted || len(reasons) != 1 || !strings.Contains(reasons[0], "./my-theme") || !reflect.DeepEqual(reasons, w.Code) {
+		t.Errorf("headmatter theme: reasons %q (Code %q), trusted %v; want the theme, untrusted", reasons, w.Code, trusted)
+	}
+	codeDeck := packCodeFixture(t, t.TempDir())
+	w, reasons, trusted = assess(codeDeck, `"default"`, true)
+	if trusted || len(reasons) == 0 {
+		t.Errorf("code talk with TrustCode: reasons %q, trusted %v; want reasons, untrusted", reasons, trusted)
+	}
+	if err := (trust.Store{Path: filepath.Join(home, trust.FileName)}).Remember(w.Manifest.ID, w.Hash, "t"); err != nil {
+		t.Fatal(err)
+	}
+	if _, reasons, trusted = assess(codeDeck, `"default"`, false); !trusted || len(reasons) == 0 {
+		t.Errorf("remembered code talk: reasons %q, trusted %v; want reasons, trusted", reasons, trusted)
 	}
 }

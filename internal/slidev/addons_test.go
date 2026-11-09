@@ -455,3 +455,38 @@ func TestAddonPreloadLoadsProbe(t *testing.T) {
 		unchanged(t)
 	})
 }
+
+// A preload a crash left short (or anything else at its name) is replaced, so the addons are
+// never silently missing.
+func TestAddonLaunchReplacesABrokenPreload(t *testing.T) {
+	for name, content := range map[string][]byte{
+		"empty":     {},
+		"truncated": addonsPreload[:len(addonsPreload)/2],
+		"garbage":   []byte("not a preload\n"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			sum := sha256.Sum256(addonsPreload)
+			p := filepath.Join(home, "lib", "addons-preload-"+hex.EncodeToString(sum[:])[:12]+".mjs")
+			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p, content, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			nodeArgs, _, err := AddonLaunch(home, []string{"/a"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := preloadFile(t, nodeArgs[1]); got != p {
+				t.Fatalf("the preload is at %s, want %s", got, p)
+			}
+			if data, err := os.ReadFile(p); err != nil || !bytes.Equal(data, addonsPreload) {
+				t.Fatalf("the broken preload was kept (%d bytes, err %v)", len(data), err)
+			}
+			if left, _ := os.ReadDir(filepath.Dir(p)); len(left) != 1 {
+				t.Fatalf("lib holds %d entries, want only the preload", len(left))
+			}
+		})
+	}
+}

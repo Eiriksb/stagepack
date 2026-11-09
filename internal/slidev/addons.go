@@ -1,6 +1,7 @@
 package slidev
 
 import (
+	"bytes"
 	"crypto/sha256"
 	_ "embed"
 	"encoding/hex"
@@ -10,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"stagepack/internal/atomicfile"
 )
 
 // ExtraAddonsEnv holds the addons the preload adds to the talk's, as a JSON array of absolute
@@ -24,9 +27,9 @@ var addonsPreload []byte
 
 // AddonLaunch returns the Config.NodeArgs and Config.Env that make Slidev load addons, folders
 // outside the talk, on top of the talk's own. It writes the embedded preload to
-// <home>/lib/addons-preload-<sha256[:12]>.mjs, once, and returns NodeArgs {"--import", <file URL
-// of it>} and Env {ExtraAddonsEnv + "=" + JSON array of absolute, forward-slash paths}. With no
-// addons it returns nil, nil, nil: no preload at all.
+// <home>/lib/addons-preload-<sha256[:12]>.mjs, unless that file holds it already, and returns
+// NodeArgs {"--import", <file URL of it>} and Env {ExtraAddonsEnv + "=" + JSON array of
+// absolute, forward-slash paths}. With no addons it returns nil, nil, nil: no preload at all.
 //
 // Addons passed this way are the caller's (an editor's), not the talk's, so they never count as
 // the talk's code: the trust check reads only the talk's files and headmatter.
@@ -60,11 +63,12 @@ func AddonLaunch(home string, addons []string) (nodeArgs, env []string, err erro
 
 // writePreload writes the embedded preload into dir unless it is there already, and returns its
 // path. The name carries the content's hash, so a new preload gets a new file, and a Slidev
-// still running keeps the one it loaded.
+// still running keeps the one it loaded. A file at that name that doesn't hold exactly the
+// preload (a crash cut it short, say) is replaced, so the addons are never silently missing.
 func writePreload(dir string) (string, error) {
 	sum := sha256.Sum256(addonsPreload)
 	p := filepath.Join(dir, "addons-preload-"+hex.EncodeToString(sum[:])[:12]+".mjs")
-	if _, err := os.Stat(p); err == nil {
+	if holdsPreload(p) {
 		return p, nil
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -75,20 +79,27 @@ func writePreload(dir string) (string, error) {
 		return "", err
 	}
 	_, werr := tmp.Write(addonsPreload)
-	if err := errors.Join(werr, tmp.Close()); err != nil {
+	if err := errors.Join(werr, tmp.Sync(), tmp.Close()); err != nil {
 		os.Remove(tmp.Name())
 		return "", err
 	}
-	if err := os.Rename(tmp.Name(), p); err != nil {
+	if err := atomicfile.Rename(tmp.Name(), p); err != nil {
 		os.Remove(tmp.Name())
 		// Another launch may have put it there meanwhile (Windows refuses to rename over a
-		// file in use); its content is the same, as the name says.
-		if _, serr := os.Stat(p); serr == nil {
+		// file in use).
+		if holdsPreload(p) {
 			return p, nil
 		}
 		return "", err
 	}
+	atomicfile.SyncDir(dir)
 	return p, nil
+}
+
+// holdsPreload reports whether the file at p is exactly the embedded preload.
+func holdsPreload(p string) bool {
+	data, err := os.ReadFile(p)
+	return err == nil && bytes.Equal(data, addonsPreload)
 }
 
 // fileURL turns an absolute path with forward slashes into a file URL Node accepts:
